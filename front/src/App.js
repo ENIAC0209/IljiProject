@@ -378,6 +378,7 @@ function App() {
   // ==========================
   // ✅ (주제3 공통) Back data 엑셀 파싱 + 코드분류표 매핑 + 서버 업로드 1회
   // ==========================
+  // ✅ (주제3 공통) Back data 엑셀 파싱 + 코드분류표 매핑 + 서버 업로드 1회(+중복 confirm)
   const parseAndApplyBackData = async (file) => {
     if (!file) return;
 
@@ -385,6 +386,7 @@ function App() {
     setBackFile(file);
 
     const reader = new FileReader();
+
     reader.onload = async (evt) => {
       try {
         const data = new Uint8Array(evt.target.result);
@@ -402,6 +404,7 @@ function App() {
         const mappingSheetName = workbook.SheetNames.find((name) =>
           /코드분류표|code.?map|코드맵/i.test(name)
         );
+
         if (mappingSheetName) {
           const mappingSheet = workbook.Sheets[mappingSheetName];
           const mappingRows = XLSX.utils.sheet_to_json(mappingSheet, {
@@ -432,6 +435,7 @@ function App() {
 
         console.log("[Frontend] P&L back data rows:", json.length);
 
+        // 프론트 즉시 반영
         if (json && json.length) {
           setBackData(json);
           setCodeNameMap(mapping);
@@ -443,24 +447,62 @@ function App() {
         if (!plReportRequested) {
           try {
             setPlReportRequested(true);
-            const formData = new FormData();
-            formData.append("file", file);
 
+            // 1차 업로드
             const res = await fetch(`${API_BASE}/api/pl-report/back-data`, {
               method: "POST",
-              body: formData,
+              body: makeFormData(),
             });
 
+            const json1 = await res.json().catch(() => ({}));
+
             if (!res.ok) {
-              const errJson = await res.json().catch(() => ({}));
               console.warn(
                 "[Frontend] /api/pl-report/back-data failed:",
-                errJson?.error || res.status
+                json1?.error || res.status
               );
               setPlReportRequested(false);
+              return;
+            }
+
+            // 중복 데이터 → confirm 후 force 업로드
+            if (json1?.need_confirm) {
+              const ok = window.confirm(
+                json1?.message ||
+                  "이미 해당 연도와 월에 해당하는 데이터가 있습니다. 다시 저장할까요?"
+              );
+
+              if (!ok) {
+                // 사용자가 덮어쓰기 거절 → 다음 업로드 가능하게 풀어줌
+                setPlReportRequested(false);
+                return;
+              }
+
+              const res2 = await fetch(
+                `${API_BASE}/api/pl-report/back-data?force=1`,
+                {
+                  method: "POST",
+                  body: makeFormData(), // ✅ 새 FormData로 재생성 (안전)
+                }
+              );
+
+              const json2 = await res2.json().catch(() => ({}));
+
+              if (!res2.ok) {
+                console.warn(
+                  "[Frontend] /api/pl-report/back-data overwrite failed:",
+                  json2?.error || res2.status
+                );
+                setPlReportRequested(false);
+                return;
+              }
+
+              console.log(
+                "[Frontend] /api/pl-report/back-data overwritten:",
+                json2
+              );
             } else {
-              const okJson = await res.json().catch(() => ({}));
-              console.log("[Frontend] /api/pl-report/back-data ok:", okJson);
+              console.log("[Frontend] /api/pl-report/back-data ok:", json1);
             }
           } catch (err) {
             console.warn("[Frontend] back-data upload error:", err);
