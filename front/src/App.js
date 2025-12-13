@@ -1,0 +1,2492 @@
+// src/App.js
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
+import logoSmall from "./img_logo5_crop.jpg";
+
+import {
+  BRAND_GREEN,
+  BRAND_ORANGE,
+  BRAND_DARK,
+  BG_LIGHT,
+  PL_DIMENSION_OPTIONS,
+  PL_DIM_LABELS,
+  DIM_COL_MAP,
+  SALES_COLS,
+  COGS_COLS,
+  SGA_COLS,
+  NONOP_REV_COLS,
+  NONOP_EXP_COLS,
+  TAX_COLS,
+} from "./config/plConfig";
+
+// ✅ 기존 탭들
+import OverviewTab from "./components/tabs/OverviewTab";
+import ClosingTab from "./components/tabs/ClosingTab";
+import VarianceTab from "./components/tabs/VarianceTab";
+import PlReportTab from "./components/tabs/PlReportTab";
+
+// ✅ 주제3-4 추가 탭
+import PlReportCauseTab from "./components/tabs/PlReportCauseTab";
+import ForecastTab from "./components/tabs/ForecastTab";
+
+// ✅ 로그인 페이지
+import LoginPage from "./pages/loginPage";
+
+// ✅ 아이콘 (첨부 순서대로)
+import iconApps from "./assets/icons/apps.png";
+import iconCheck from "./assets/icons/checkbox.png";
+import iconSignal from "./assets/icons/signal.png";
+import iconDoc from "./assets/icons/document.png";
+import iconChart from "./assets/icons/chart.png";
+
+// ===== Flask API 베이스 =====
+const API_BASE = "http://localhost:5000";
+
+// 숫자 포맷 helper
+const formatNumber = (v) =>
+  typeof v === "number" ? v.toLocaleString("ko-KR") : v;
+
+function App() {
+  // ==============================
+  // ✅ 로그인 상태 (기존 유지)
+  // ==============================
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return sessionStorage.getItem("ilji_logged_in") === "1";
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (isLoggedIn) sessionStorage.setItem("ilji_logged_in", "1");
+      else sessionStorage.removeItem("ilji_logged_in");
+    } catch (err) {
+      console.warn("sessionStorage sync error:", err);
+    }
+  }, [isLoggedIn]);
+
+  // (LoginPage가 theme props를 기대할 가능성 대비)
+  const [theme, setTheme] = useState("light");
+
+  // ==============================
+  // 상태/데이터 (기존 유지 + 주제3~4 필요한 것 추가)
+  // ==============================
+  const [plReportData, setPlReportData] = useState([]); // 기존 /api/pl-report fetch 결과 (유지)
+
+  const [anomalyResult, setAnomalyResult] = useState(null);
+  const [anomalyLoading, setAnomalyLoading] = useState(false);
+  const [anomalyError, setAnomalyError] = useState(null);
+
+  const [selectedIssue, setSelectedIssue] = useState(null);
+  const [stage, setStage] = useState("landing"); // "landing" | "app" | "error"
+
+  // === 업로드 상태 ===
+  const [costDataUploaded, setCostDataUploaded] = useState(false);
+  const [plDataUploaded, setPlDataUploaded] = useState(false);
+
+  // === 실제 데이터 ===
+  const [costData, setCostData] = useState(null);
+  const [anomalyData, setAnomalyData] = useState([]);
+  const [backData, setBackData] = useState(null);
+
+  // ✅ 주제3: 코드분류표 매핑
+  const [codeNameMap, setCodeNameMap] = useState({});
+
+  // ✅ 주제3/4: 백엔드에 back-data 업로드 1회만 방지용
+  const [plReportRequested, setPlReportRequested] = useState(false);
+
+  // ✅ 주제3/4: 업로드한 파일 자체 보관(서버로 보낼 때 사용)
+  const [backFile, setBackFile] = useState(null);
+
+  const [tab, setTab] = useState("overview");
+  const [selectedMonth, setSelectedMonth] = useState("");
+
+  const [plDimension, setPlDimension] = useState("profitCenter");
+  const [plPeriod, setPlPeriod] = useState("all");
+  const [plViewMode, setPlViewMode] = useState("table");
+  const [plDetailTab, setPlDetailTab] = useState("basic");
+
+  // 업로드 input ref
+  const costFileInputRef = useRef(null); // 코스트센터 (1~3탭)
+  const plFileInputRef = useRef(null); // 결산보고서 Back data (P&L용)
+
+  // 코스트센터 업로드 UX 상태
+  const [pendingCostFile, setPendingCostFile] = useState(null);
+  const [costUploading, setCostUploading] = useState(false);
+
+  // P&L 업로드 UX 상태
+  const [pendingPlFile, setPendingPlFile] = useState(null);
+  const [plUploading, setPlUploading] = useState(false);
+
+  // 초기 로딩 진행률
+  const [initProgress, setInitProgress] = useState(0);
+
+  const handleIssueRowClick = (row) => {
+    setSelectedIssue((prev) => (prev && prev.id === row.id ? null : row));
+  };
+
+  useEffect(() => {
+    console.log("anomalyData length:", anomalyData ? anomalyData.length : 0);
+  }, [anomalyData]);
+
+  // ==========================
+  // 백엔드에서 초기 데이터 불러오기 (기존 유지)
+  // ==========================
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let mounted = true;
+
+    async function loadFromBackend() {
+      try {
+        if (!mounted) return;
+
+        setInitProgress(10);
+
+        const res = await fetch(`${API_BASE}/api/init-data`);
+        if (!res.ok) {
+          console.error("init-data HTTP error", res.status);
+          if (mounted) {
+            setStage("error");
+            setInitProgress(100);
+          }
+          return;
+        }
+
+        const data = await res.json();
+        console.log("init-data:", data);
+
+        if (!mounted) return;
+        setInitProgress(40);
+
+        if (Array.isArray(data.costData) && data.costData.length) {
+          setCostData(data.costData);
+          // ❌ setCostDataUploaded(true);  // 제거: 초기 로딩은 업로드로 치지 않음
+        }
+
+        if (Array.isArray(data.backData) && data.backData.length) {
+          setBackData(data.backData);
+          // ❌ setPlDataUploaded(true);    // 제거: 초기 로딩은 업로드로 치지 않음
+        }
+
+        if (data.codeNameMap && Object.keys(data.codeNameMap).length > 0) {
+          setCodeNameMap(data.codeNameMap);
+        }
+
+        if (Array.isArray(data.anomalyData)) {
+          setAnomalyData(data.anomalyData);
+          console.log("anomalyData length:", data.anomalyData.length);
+        }
+
+        // 기본 분석 호출
+        try {
+          if (!mounted) return;
+
+          setAnomalyLoading(true);
+          setAnomalyError(null);
+          setInitProgress(60);
+
+          const res2 = await fetch(
+            `${API_BASE}/api/cost-center/analyze-default`
+          );
+
+          if (!res2.ok) {
+            const msg = `analyze-default HTTP ${res2.status}`;
+            console.error(msg);
+            if (mounted) setAnomalyError(msg);
+          } else {
+            const data2 = await res2.json();
+            console.log("anomalyResult(default):", data2);
+            if (mounted) setAnomalyResult(data2);
+          }
+        } catch (err2) {
+          console.error("analyze-default fetch error", err2);
+          if (mounted) setAnomalyError(err2.message || String(err2));
+        } finally {
+          if (mounted) {
+            setAnomalyLoading(false);
+            setInitProgress(80);
+          }
+        }
+
+        if (mounted) {
+          setStage("app");
+          setInitProgress(100);
+        }
+      } catch (err) {
+        console.error("init-data fetch error", err);
+        if (mounted) {
+          setStage("error");
+          setInitProgress(100);
+        }
+      }
+    }
+
+    loadFromBackend();
+
+    return () => {
+      mounted = false;
+    };
+  }, [isLoggedIn]);
+
+  // P&L 보고서 데이터 (기존 유지: /api/pl-report)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    async function fetchPlReport() {
+      try {
+        const res = await fetch(`${API_BASE}/api/pl-report`);
+        if (!res.ok) {
+          console.error("PL Report HTTP error", res.status);
+          setPlReportData([]);
+          return;
+        }
+        const json = await res.json();
+        setPlReportData(json.rows || []);
+      } catch (err) {
+        console.error("PL Report fetch error:", err);
+        setPlReportData([]);
+      }
+    }
+
+    fetchPlReport();
+  }, [isLoggedIn]);
+
+  // ==========================
+  // 엑셀 업로드 (코스트센터 파일) - 기존 유지
+  // ==========================
+  const handleUploadCostFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingCostFile(file);
+  };
+
+  const handleConfirmCostUpload = async () => {
+    if (!pendingCostFile) return;
+
+    const formData = new FormData();
+    formData.append("file", pendingCostFile);
+
+    try {
+      setCostUploading(true);
+      setAnomalyLoading(true);
+      setAnomalyError(null);
+
+      const res = await fetch(`${API_BASE}/api/cost-center/analyze`, {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const result = await res.json();
+      console.log("[Frontend] analyze result:", result);
+
+      setAnomalyResult(result);
+
+      const issues = Array.isArray(result.issues) ? result.issues : [];
+      const normalized = issues.map((r, idx) => ({
+        ...r,
+        id: idx + 1,
+        year_month: r.year_month,
+        amount: r.amount,
+        issue_type: r.issue_type,
+        severity_rank: r.severity_rank,
+        account_code: r.account_code,
+        account_name: r.account_name,
+        cost_center: r.cost_center,
+        cc_name: r.cc_name,
+        reason_kor: r.reason_kor,
+        patternMean: r.patternMean ?? r.pattern_mean ?? r.pattern_avg ?? null,
+        patternUpper: r.patternUpper ?? r.pattern_upper ?? null,
+        patternLower: r.patternLower ?? r.pattern_lower ?? null,
+      }));
+      setAnomalyData(normalized);
+
+      if (Array.isArray(result.costData) && result.costData.length > 0) {
+        setCostData(result.costData);
+      }
+
+      if (result.summary && result.summary.year_month) {
+        setSelectedMonth(result.summary.year_month);
+      } else if (Array.isArray(result.costData) && result.costData.length > 0) {
+        const row0 = result.costData[0];
+        const cols = Object.keys(row0 || {});
+        const monthCols = cols.filter((col) =>
+          /(20\d{2}.*\d{1,2}|^\d{4}-\d{2}$|^\d{4}\.\d{2}$|20\d{2}년\s*\d{1,2}월)/.test(
+            String(col)
+          )
+        );
+        if (monthCols.length > 0) {
+          const metasTmp = monthCols.map((col, idx) => {
+            const s = String(col);
+            const m = s.match(/(20\d{2})\D?(\d{1,2})/);
+            let year = null;
+            let month = null;
+            if (m) {
+              year = parseInt(m[1], 10);
+              month = parseInt(m[2], 10);
+            }
+            return {
+              col,
+              year,
+              month,
+              index: idx,
+              label:
+                year && month ? `${year}-${String(month).padStart(2, "0")}` : s,
+            };
+          });
+
+          metasTmp.sort((a, b) => {
+            if (a.year && b.year && a.month && b.month) {
+              if (a.year !== b.year) return a.year - b.year;
+              return a.month - b.month;
+            }
+            return a.index - b.index;
+          });
+
+          const last = metasTmp[metasTmp.length - 1];
+          if (last && last.label) setSelectedMonth(last.label);
+        }
+      }
+
+      setCostDataUploaded(true);
+
+      setPendingCostFile(null);
+      if (costFileInputRef.current) costFileInputRef.current.value = "";
+    } catch (err) {
+      console.error("cost-center analyze error:", err);
+      setAnomalyError(err.message || String(err));
+      alert(
+        "업로드한 코스트센터 엑셀 분석 중 오류가 발생했습니다.\n양식을 한 번 더 확인해 주세요."
+      );
+    } finally {
+      setCostUploading(false);
+      setAnomalyLoading(false);
+    }
+  };
+
+  const handleCancelPendingCostFile = () => {
+    setPendingCostFile(null);
+    if (costFileInputRef.current) costFileInputRef.current.value = "";
+  };
+
+  // ==========================
+  // ✅ (주제3 공통) Back data 엑셀 파싱 + 코드분류표 매핑 + 서버 업로드 1회
+  // ==========================
+  const parseAndApplyBackData = async (file) => {
+    if (!file) return;
+
+    // 서버로 보낼 수 있도록 파일 보관
+    setBackFile(file);
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: "array" });
+
+        // 1) Back data 시트 우선 탐색
+        const backSheet =
+          workbook.Sheets["Back data"] ||
+          workbook.Sheets["BackData"] ||
+          workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(backSheet, { defval: null });
+
+        // 2) 코드분류표 시트 탐색 → codeNameMap 세팅
+        let mapping = {};
+        const mappingSheetName = workbook.SheetNames.find((name) =>
+          /코드분류표|code.?map|코드맵/i.test(name)
+        );
+        if (mappingSheetName) {
+          const mappingSheet = workbook.Sheets[mappingSheetName];
+          const mappingRows = XLSX.utils.sheet_to_json(mappingSheet, {
+            defval: null,
+          });
+
+          mappingRows.forEach((row) => {
+            const rawCode =
+              row["코드"] ||
+              row["계정코드"] ||
+              row["코스트센터"] ||
+              row["코드값"] ||
+              row["Code"];
+            const rawName =
+              row["내역"] ||
+              row["계정명"] ||
+              row["코스트센터명"] ||
+              row["Name"] ||
+              row["설명"];
+
+            if (rawCode && rawName) {
+              const code = String(rawCode).trim();
+              const name = String(rawName).trim();
+              if (code) mapping[code] = name;
+            }
+          });
+        }
+
+        console.log("[Frontend] P&L back data rows:", json.length);
+
+        if (json && json.length) {
+          setBackData(json);
+          setCodeNameMap(mapping);
+          setPlDataUploaded(true);
+          setPlPeriod("all");
+        }
+
+        // 3) 서버에 /api/pl-report/back-data 업로드도 1회만 시도
+        if (!plReportRequested) {
+          try {
+            setPlReportRequested(true);
+            const formData = new FormData();
+            formData.append("file", file);
+
+            const res = await fetch(`${API_BASE}/api/pl-report/back-data`, {
+              method: "POST",
+              body: formData,
+            });
+
+            if (!res.ok) {
+              const errJson = await res.json().catch(() => ({}));
+              console.warn(
+                "[Frontend] /api/pl-report/back-data failed:",
+                errJson?.error || res.status
+              );
+              setPlReportRequested(false);
+            } else {
+              const okJson = await res.json().catch(() => ({}));
+              console.log("[Frontend] /api/pl-report/back-data ok:", okJson);
+            }
+          } catch (err) {
+            console.warn("[Frontend] back-data upload error:", err);
+            setPlReportRequested(false);
+          }
+        }
+      } catch (err) {
+        console.error("Back data excel parse error:", err);
+        alert(
+          "결산보고서(Back data) 엑셀을 읽는 중 오류가 발생했습니다. 양식을 확인해 주세요."
+        );
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
+
+  // ==========================
+  // 엑셀 업로드 (결산 Back data) - 기존 UX 유지
+  // ==========================
+  const handleUploadPlFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setPendingPlFile(file);
+  };
+
+  const handleConfirmPlUpload = () => {
+    if (!pendingPlFile) return;
+
+    setPlUploading(true);
+
+    (async () => {
+      try {
+        await parseAndApplyBackData(pendingPlFile);
+      } finally {
+        setPlUploading(false);
+        setPendingPlFile(null);
+        if (plFileInputRef.current) plFileInputRef.current.value = "";
+      }
+    })();
+  };
+
+  const handleCancelPendingPlFile = () => {
+    setPendingPlFile(null);
+    if (plFileInputRef.current) plFileInputRef.current.value = "";
+  };
+
+  // ==========================
+  // ✅ (주제3 App.js 방식) PlReportTab 내부 업로드 input에서 바로 꽂아 쓰는 핸들러
+  // ==========================
+  const handleBackDataFile = (event) => {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    parseAndApplyBackData(file);
+  };
+
+  // ==========================
+  // 비용 데이터 기반 월 메타 (기존 유지)
+  // ==========================
+  const costMonthMeta = useMemo(() => {
+    if (!costData || costData.length === 0) return [];
+    const sample = costData[0];
+    const allCols = Object.keys(sample);
+
+    let headerBased = allCols.filter((col) => {
+      const s = String(col);
+      return /(20\d{2}.*\d{1,2}|^\d{4}-\d{2}$|^\d{4}\.\d{2}$|20\d{2}년\s*\d{1,2}월)/.test(
+        s
+      );
+    });
+
+    if (!headerBased.length) {
+      headerBased = allCols.filter((col) => {
+        let numericCount = 0;
+        let nonEmpty = 0;
+        const limit = Math.min(costData.length, 50);
+        for (let i = 0; i < limit; i++) {
+          const v = costData[i][col];
+          if (v === null || v === undefined || v === "") continue;
+          nonEmpty++;
+          if (!isNaN(Number(v))) numericCount++;
+        }
+        return nonEmpty > 0 && numericCount / nonEmpty >= 0.7;
+      });
+    }
+
+    const metas = headerBased.map((col, idx) => {
+      const s = String(col);
+      const m = s.match(/(20\d{2})\D?(\d{1,2})/);
+      let year = null;
+      let month = null;
+      if (m) {
+        year = parseInt(m[1], 10);
+        month = parseInt(m[2], 10);
+      }
+      let label;
+      if (year && month)
+        label = String(year) + "-" + String(month).padStart(2, "0");
+      else label = s;
+
+      return { col, label, year, month, index: idx };
+    });
+
+    metas.sort((a, b) => {
+      if (a.year && b.year && a.month && b.month) {
+        if (a.year !== b.year) return a.year - b.year;
+        return a.month - b.month;
+      }
+      return a.index - b.index;
+    });
+
+    return metas;
+  }, [costData]);
+
+  // selectedMonth 기본값 / 유효성 유지 (기존 유지)
+  useEffect(() => {
+    if (!costMonthMeta.length) return;
+
+    const labels = costMonthMeta.map((m) => m.label);
+    if (!selectedMonth || !labels.includes(selectedMonth)) {
+      setSelectedMonth(costMonthMeta[costMonthMeta.length - 1].label);
+    }
+  }, [costMonthMeta, selectedMonth]);
+
+  // 월별 총비용 (기존 유지)
+  const monthlyTotalCost = useMemo(() => {
+    if (!costData || !costMonthMeta.length) return [];
+
+    return costMonthMeta.map((meta) => {
+      let total = 0;
+      costData.forEach((row) => {
+        const v = row[meta.col];
+        const num = Number(v);
+        if (!isNaN(num)) total += num;
+      });
+
+      let lastYear = 0;
+      if (meta.year && meta.month) {
+        const prevMeta = costMonthMeta.find(
+          (m) => m.month === meta.month && m.year === meta.year - 1
+        );
+        if (prevMeta) {
+          let ly = 0;
+          costData.forEach((row) => {
+            const v = row[prevMeta.col];
+            const num = Number(v);
+            if (!isNaN(num)) ly += num;
+          });
+          lastYear = ly;
+        }
+      }
+
+      return {
+        month: meta.label,
+        total: Math.round(total),
+        lastYear: Math.round(lastYear),
+      };
+    });
+  }, [costData, costMonthMeta]);
+
+  // 계정군별 비중 (기존 유지)
+  const accountGroupShare = useMemo(() => {
+    if (!costData || !costMonthMeta.length || !selectedMonth) return [];
+
+    const meta =
+      costMonthMeta.find((m) => m.label === selectedMonth) ||
+      costMonthMeta[costMonthMeta.length - 1];
+    const monthCol = meta.col;
+
+    const sample = costData[0] || {};
+    const keys = Object.keys(sample);
+
+    const accGroupKey =
+      keys.find((k) => k.includes("계정군")) ||
+      keys.find((k) => k.includes("비용군")) ||
+      keys.find((k) => /account.?group/i.test(k));
+
+    const accNameKey =
+      keys.find((k) => k.includes("계정명")) ||
+      keys.find(
+        (k) =>
+          (k.includes("계정") || k.includes("계정과목")) && !k.includes("코드")
+      ) ||
+      keys.find((k) => /account.?name/i.test(k));
+
+    const groupTotals = {};
+
+    costData.forEach((row) => {
+      const rawVal = row[monthCol];
+      const num = Number(rawVal);
+      if (isNaN(num) || num === 0) return;
+
+      const amount = Math.abs(num);
+      let group = "기타";
+
+      if (accGroupKey) {
+        group = String(row[accGroupKey] || "기타");
+      } else if (accNameKey) {
+        const accName = String(row[accNameKey] || "");
+        if (accName.startsWith("(")) {
+          const m = accName.match(/^\((.)\)/);
+          if (m) {
+            const mark = m[1];
+            if (mark === "제") group = "제조원가(제)";
+            else if (mark === "판") group = "판관비(판)";
+            else if (mark === "영") group = "영업비용(영)";
+            else if (mark === "연") group = "연구개발비(연)";
+            else group = "기타(기)";
+          } else group = "기타(기)";
+        } else group = "기타(기)";
+      }
+
+      if (!groupTotals[group]) groupTotals[group] = 0;
+      groupTotals[group] += amount;
+    });
+
+    let entries = Object.entries(groupTotals)
+      .map(([name, value]) => ({ name, value }))
+      .filter((x) => x.value !== 0);
+
+    if (!entries.length) return [];
+
+    entries.sort((a, b) => b.value - a.value);
+
+    const MAX_GROUPS = 5;
+    const main = entries.slice(0, MAX_GROUPS);
+    const rest = entries.slice(MAX_GROUPS);
+
+    if (rest.length) {
+      const etcSum = rest.reduce((s, x) => s + x.value, 0);
+      main.push({ name: "기타", value: etcSum });
+    }
+
+    return main.map((x) => ({ ...x, value: Math.round(x.value) }));
+  }, [costData, costMonthMeta, selectedMonth]);
+
+  // 코스트센터별 비용 Top 5 (기존 유지)
+  const topCostCenters = useMemo(() => {
+    if (!costData || !costMonthMeta.length || !selectedMonth) return [];
+
+    const meta =
+      costMonthMeta.find((m) => m.label === selectedMonth) ||
+      costMonthMeta[costMonthMeta.length - 1];
+    const monthCol = meta.col;
+
+    const sample = costData[0] || {};
+    const keys = Object.keys(sample);
+
+    let ccNameKey =
+      keys.find((k) => k.includes("코스트센터명")) ||
+      keys.find((k) => k.includes("코스트센터") && !k.includes("코드")) ||
+      keys.find((k) => /cost.?center.?name/i.test(k));
+    let ccCodeKey =
+      keys.find((k) => k.includes("코스트센터코드")) ||
+      keys.find((k) => /cost.?center.?code/i.test(k));
+
+    const totals = {};
+    costData.forEach((row) => {
+      const amount = Number(row[monthCol]) || 0;
+      if (!amount) return;
+      const name =
+        (ccNameKey && row[ccNameKey]) ||
+        (ccCodeKey && row[ccCodeKey]) ||
+        "기타";
+      const key = String(name);
+      if (!totals[key]) totals[key] = 0;
+      totals[key] += amount;
+    });
+
+    const arr = Object.entries(totals).map(([name, cost]) => ({
+      name,
+      cost: Math.round(cost),
+    }));
+    arr.sort((a, b) => b.cost - a.cost);
+    return arr.slice(0, 5);
+  }, [costData, costMonthMeta, selectedMonth]);
+
+  // Closing 탭 분석 (기존 유지)
+  const closingAnalysis = useMemo(() => {
+    if (anomalyData && anomalyData.length > 0) {
+      const issues = anomalyData.filter(
+        (r) => r.issue_type && r.issue_type !== "정상"
+      );
+
+      if (!issues.length) return { rows: [], history: {} };
+
+      const history = {};
+      issues.forEach((r) => {
+        const key = `${r.account_code || ""}|${r.account_name || ""}|${
+          r.cost_center || ""
+        }`;
+        if (!history[key]) history[key] = [];
+        history[key].push({
+          month: String(r.year_month || ""),
+          amount: Number(r.amount) || 0,
+        });
+      });
+
+      Object.keys(history).forEach((key) => {
+        history[key].sort((a, b) => a.month.localeCompare(b.month));
+      });
+
+      const rows = issues.map((r, idx) => {
+        const severity = Number(r.severity_rank || 0);
+
+        let status = "check";
+        if (r.issue_type === "결측 의심") status = "issue";
+        else if (r.issue_type === "이상치 의심" && severity >= 4)
+          status = "issue";
+
+        const key = `${r.account_code || ""}|${r.account_name || ""}|${
+          r.cost_center || ""
+        }`;
+
+        const patternMean =
+          r.patternMean ??
+          r.pattern_mean ??
+          r.base_mean ??
+          r.pattern_avg ??
+          null;
+        const patternUpper =
+          r.patternUpper ?? r.pattern_upper ?? r.base_upper ?? null;
+        const patternLower =
+          r.patternLower ?? r.pattern_lower ?? r.base_lower ?? null;
+
+        return {
+          id: idx + 1,
+          key,
+          month: String(r.year_month || ""),
+          accountCode: r.account_code || "",
+          accountName: r.account_name || "",
+          costCenter: r.cc_name || r.cost_center || "",
+          amount: Number(r.amount) || 0,
+          status,
+          reason: r.reason_kor || "",
+          issueType: r.issue_type || "",
+          severity,
+          patternMean,
+          patternUpper,
+          patternLower,
+        };
+      });
+
+      rows.sort((a, b) => {
+        if (b.severity !== a.severity) return b.severity - a.severity;
+        return Math.abs(b.amount) - Math.abs(a.amount);
+      });
+
+      return { rows: rows.slice(0, 50), history };
+    }
+
+    if (!costData || !costMonthMeta.length) return { rows: [], history: {} };
+
+    const sample = costData[0] || {};
+    const keys = Object.keys(sample);
+
+    let accNameKey =
+      keys.find((k) => k.includes("계정명")) ||
+      keys.find((k) => k.includes("계정") && !k.includes("코드")) ||
+      keys.find((k) => /account.?name/i.test(k));
+    let accCodeKey =
+      keys.find((k) => k.includes("계정코드")) ||
+      keys.find((k) => /account.?code/i.test(k));
+    let ccNameKey =
+      keys.find((k) => k.includes("코스트센터명")) ||
+      keys.find((k) => k.includes("코스트센터") && !k.includes("코드")) ||
+      keys.find((k) => /cost.?center.?name/i.test(k));
+
+    const history = {};
+    const rows = [];
+    let idCounter = 1;
+
+    const seriesMap = new Map();
+
+    costData.forEach((row) => {
+      const code = accCodeKey ? String(row[accCodeKey] || "") : "";
+      const name = accNameKey ? String(row[accNameKey] || "") : "";
+      const cc = ccNameKey ? String(row[ccNameKey] || "") : "";
+      const key = `${code}|${name}|${cc}`;
+
+      if (!seriesMap.has(key)) {
+        seriesMap.set(key, {
+          accountCode: code,
+          accountName: name || "(계정명 없음)",
+          costCenter: cc || "-",
+          series: new Array(costMonthMeta.length).fill(0),
+        });
+      }
+      const item = seriesMap.get(key);
+      costMonthMeta.forEach((meta, idx) => {
+        const v = Number(row[meta.col]) || 0;
+        item.series[idx] += v;
+      });
+    });
+
+    seriesMap.forEach((item, key) => {
+      const s = item.series;
+      const lastIdx = s.length - 1;
+      if (lastIdx < 0) return;
+
+      const lastVal = s[lastIdx];
+      const prevVal = lastIdx > 0 ? s[lastIdx - 1] : 0;
+      const prevAvg =
+        lastIdx > 0
+          ? s.slice(0, lastIdx).reduce((a, v) => a + v, 0) / lastIdx
+          : 0;
+
+      let status = null;
+      let reason = "";
+      if (lastVal === 0 && prevAvg > 0) {
+        status = "issue";
+        reason = "이전 기간 대비 갑작스러운 0원 발생 (누락 가능성)";
+      } else {
+        const diff = lastVal - prevVal;
+        const rate = prevVal ? diff / prevVal : 0;
+        if (Math.abs(rate) >= 0.5 && Math.abs(diff) > 0) {
+          status = "check";
+          reason = `전월 대비 ${Math.round(rate * 100)}% 변동`;
+        } else if (Math.abs(rate) <= 0.1) {
+          status = "ok";
+          reason = "전월과 유사한 수준 (안정 구간)";
+        }
+      }
+
+      if (!status) return;
+
+      const monthLabel = costMonthMeta[lastIdx].label;
+
+      history[key] = costMonthMeta.map((meta, idx) => ({
+        month: meta.label,
+        amount: s[idx],
+      }));
+
+      rows.push({
+        id: idCounter++,
+        key,
+        month: monthLabel,
+        accountCode: item.accountCode,
+        accountName: item.accountName,
+        costCenter: item.costCenter,
+        amount: lastVal,
+        status,
+        reason,
+      });
+    });
+
+    rows.sort((a, b) => {
+      const order = { issue: 0, check: 1, ok: 2 };
+      const sdiff = order[a.status] - order[b.status];
+      if (sdiff !== 0) return sdiff;
+      return Math.abs(b.amount) - Math.abs(a.amount);
+    });
+
+    return { rows: rows.slice(0, 30), history };
+  }, [anomalyData, costData, costMonthMeta]);
+
+  // Variance 탭 (기존 유지)
+  const varianceData = useMemo(() => {
+    if (!costData || costMonthMeta.length < 2) return [];
+
+    const lastMeta = costMonthMeta[costMonthMeta.length - 1];
+    const prevMeta = costMonthMeta[costMonthMeta.length - 2];
+
+    const sample = costData[0] || {};
+    const keys = Object.keys(sample);
+
+    let accNameKey =
+      keys.find((k) => k.includes("계정명")) ||
+      keys.find((k) => k.includes("계정") && !k.includes("코드")) ||
+      keys.find((k) => /account.?name/i.test(k));
+    let accCodeKey =
+      keys.find((k) => k.includes("계정코드")) ||
+      keys.find((k) => /account.?code/i.test(k));
+
+    const grouped = {};
+    costData.forEach((row) => {
+      const name = (accNameKey && row[accNameKey]) || "계정";
+      const code = (accCodeKey && row[accCodeKey]) || "";
+      const key = String(code) + "|" + String(name);
+      if (!grouped[key]) {
+        grouped[key] = {
+          accountCode: String(code),
+          accountName: String(name),
+          lastMonth: 0,
+          thisMonth: 0,
+        };
+      }
+      const lastVal = Number(row[prevMeta.col]) || 0;
+      const curVal = Number(row[lastMeta.col]) || 0;
+      grouped[key].lastMonth += lastVal;
+      grouped[key].thisMonth += curVal;
+    });
+
+    let arr = Object.values(grouped);
+    arr.forEach((a) => {
+      const diff = a.thisMonth - a.lastMonth;
+      const rate = a.lastMonth ? (diff / a.lastMonth) * 100 : 0;
+      a.diff = diff;
+      a.rate = rate;
+    });
+
+    arr.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+    return arr.slice(0, 10);
+  }, [costData, costMonthMeta]);
+
+  const varianceSummary = useMemo(() => {
+    if (!varianceData.length) return null;
+    let totalDiff = 0;
+    let pos = 0;
+    let neg = 0;
+    varianceData.forEach((a) => {
+      totalDiff += a.diff;
+      if (a.diff > 0) pos += a.diff;
+      else if (a.diff < 0) neg += a.diff;
+    });
+    return { totalDiff, pos, neg, count: varianceData.length };
+  }, [varianceData]);
+
+  // KPI 계산 (Overview 탭) (기존 유지)
+  const kpi = useMemo(() => {
+    if (!monthlyTotalCost.length || !selectedMonth) {
+      return {
+        currentTotal: 0,
+        diff: 0,
+        diffRate: 0,
+        ytdTotal: 0,
+        yoyDiff: 0,
+        yoyRate: 0,
+      };
+    }
+
+    const idx = monthlyTotalCost.findIndex((m) => m.month === selectedMonth);
+    if (idx === -1) {
+      return {
+        currentTotal: 0,
+        diff: 0,
+        diffRate: 0,
+        ytdTotal: 0,
+        yoyDiff: 0,
+        yoyRate: 0,
+      };
+    }
+
+    const cur = monthlyTotalCost[idx];
+    const prev = idx > 0 ? monthlyTotalCost[idx - 1] : null;
+
+    const currentTotal = cur.total;
+    const diff = prev ? currentTotal - prev.total : 0;
+    const diffRate = prev && prev.total ? (diff / prev.total) * 100 : 0;
+
+    const ytdTotal = monthlyTotalCost
+      .slice(0, idx + 1)
+      .reduce((acc, v) => acc + v.total, 0);
+
+    const yoyDiff = cur.lastYear ? cur.total - cur.lastYear : 0;
+    const yoyRate = cur.lastYear ? (yoyDiff / cur.lastYear) * 100 : 0;
+
+    return { currentTotal, diff, diffRate, ytdTotal, yoyDiff, yoyRate };
+  }, [monthlyTotalCost, selectedMonth]);
+
+  // ==========================
+  // ✅ 주제3: P&L 계산 로직 (기존 유지)
+  // ==========================
+  const plAvailablePeriods = useMemo(() => {
+    if (!backData) return [];
+    const set = new Set();
+    backData.forEach((row) => {
+      const v = row["전기 기간"];
+      if (v !== undefined && v !== null && v !== "") set.add(Number(v));
+    });
+    return Array.from(set)
+      .sort((a, b) => a - b)
+      .map((v) => String(v));
+  }, [backData]);
+
+  const plRows = useMemo(() => {
+    if (!backData) return [];
+
+    const dimColName = DIM_COL_MAP[plDimension];
+    if (!dimColName) return [];
+
+    let filtered = backData;
+    if (plPeriod !== "all") {
+      const target = Number(plPeriod);
+      filtered = backData.filter((row) => Number(row["전기 기간"]) === target);
+    }
+    if (!filtered.length) return [];
+
+    const groups = new Map();
+
+    const sumCols = (row, cols) =>
+      cols.reduce(
+        (acc, col) =>
+          acc +
+          (row[col] !== undefined && row[col] !== null
+            ? Number(row[col]) || 0
+            : 0),
+        0
+      );
+
+    filtered.forEach((row) => {
+      let rawKey = row[dimColName];
+      if (rawKey === undefined || rawKey === null || rawKey === "")
+        rawKey = "(미지정)";
+      else rawKey = String(rawKey);
+
+      let displayName = rawKey;
+      if (codeNameMap && Object.keys(codeNameMap).length > 0) {
+        if (codeNameMap[rawKey]) {
+          displayName = codeNameMap[rawKey];
+        } else {
+          const token = rawKey.split(/[\/\s]/)[0];
+          if (codeNameMap[token])
+            displayName = `${codeNameMap[token]} (${rawKey})`;
+        }
+      }
+
+      const key = displayName;
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          name: key,
+          sales: 0,
+          cogs: 0,
+          sga: 0,
+          nonOpRev: 0,
+          nonOpExp: 0,
+          tax: 0,
+        });
+      }
+
+      const g = groups.get(key);
+      g.sales += sumCols(row, SALES_COLS);
+      g.cogs += sumCols(row, COGS_COLS);
+      g.sga += sumCols(row, SGA_COLS);
+      g.nonOpRev += sumCols(row, NONOP_REV_COLS);
+      g.nonOpExp += sumCols(row, NONOP_EXP_COLS);
+      g.tax += sumCols(row, TAX_COLS);
+    });
+
+    const rows = Array.from(groups.values()).map((g) => {
+      const sales = g.sales;
+      const cogs = g.cogs;
+      const sga = g.sga;
+      const nonOpRev = g.nonOpRev;
+      const nonOpExp = g.nonOpExp;
+      const tax = g.tax;
+
+      const grossProfit = sales - cogs;
+      const operatingIncome = sales - cogs - sga;
+      const nonOpProfit = nonOpRev - nonOpExp;
+      const preTax = operatingIncome + nonOpProfit;
+      const netIncome = preTax - tax;
+
+      const opMargin = sales ? (operatingIncome / sales) * 100 : 0;
+      const netMargin = sales ? (netIncome / sales) * 100 : 0;
+
+      return {
+        name: g.name,
+        sales,
+        cogs,
+        grossProfit,
+        sga,
+        operatingIncome,
+        nonOpRev,
+        nonOpExp,
+        nonOpProfit,
+        tax,
+        preTax,
+        netIncome,
+        opMargin,
+        netMargin,
+      };
+    });
+
+    rows.sort((a, b) => b.sales - a.sales);
+    return rows;
+  }, [backData, plDimension, plPeriod, codeNameMap]);
+
+  const plSummary = useMemo(() => {
+    if (!plRows.length) return null;
+    return plRows.reduce(
+      (acc, r) => {
+        acc.sales += r.sales;
+        acc.cogs += r.cogs;
+        acc.sga += r.sga;
+        acc.nonOpRev += r.nonOpRev;
+        acc.nonOpExp += r.nonOpExp;
+        acc.nonOpProfit += r.nonOpProfit;
+        acc.tax += r.tax;
+        acc.preTax += r.preTax;
+        acc.netIncome += r.netIncome;
+        return acc;
+      },
+      {
+        sales: 0,
+        cogs: 0,
+        sga: 0,
+        nonOpRev: 0,
+        nonOpExp: 0,
+        nonOpProfit: 0,
+        tax: 0,
+        preTax: 0,
+        netIncome: 0,
+      }
+    );
+  }, [plRows]);
+
+  const waterfallData = useMemo(() => {
+    if (!plSummary) return [];
+    const { sales, cogs, sga, nonOpProfit, tax, netIncome } = plSummary;
+
+    const labels = [
+      "매출액",
+      "매출원가",
+      "판관비",
+      "영업외손익",
+      "법인세비용",
+      "당기순이익",
+    ];
+    const values = [sales, -cogs, -sga, nonOpProfit, -tax, netIncome];
+
+    const steps = [];
+    let cumulative = 0;
+    labels.forEach((name, i) => {
+      const amount = values[i];
+      const start = cumulative;
+      cumulative += amount;
+      steps.push({ name, start, amount });
+    });
+    return steps;
+  }, [plSummary]);
+
+  const marginRankingData = useMemo(() => {
+    if (!plRows.length) return [];
+    const valid = plRows.filter((r) => r.sales > 0);
+    if (!valid.length) return [];
+    const sorted = [...valid].sort((a, b) => b.opMargin - a.opMargin);
+    const top = sorted.slice(0, 5);
+    const bottom = sorted.slice(-3);
+    return [...top, ...bottom];
+  }, [plRows]);
+
+  const salesProfitData = useMemo(() => {
+    if (!plRows.length) return [];
+    const sorted = [...plRows].sort((a, b) => b.sales - a.sales);
+    return sorted.slice(0, 10);
+  }, [plRows]);
+
+  const topUnitStructureData = useMemo(() => {
+    if (!plRows.length) return null;
+    const sorted = [...plRows].sort((a, b) => b.sales - a.sales);
+    const top = sorted[0];
+    return {
+      name: top.name,
+      items: [
+        { label: "매출액", value: top.sales },
+        { label: "매출원가", value: top.cogs },
+        { label: "판관비", value: top.sga },
+        { label: "영업이익", value: top.operatingIncome },
+        { label: "영업외손익", value: top.nonOpProfit },
+        { label: "법인세비용", value: top.tax },
+        { label: "당기순이익", value: top.netIncome },
+      ],
+    };
+  }, [plRows]);
+
+  // ==========================
+  // 공통 레이아웃 / 스타일 (기존 유지)
+  // ==========================
+  const SIDEBAR_ICON_WIDTH = 56;
+  const SIDEBAR_PANEL_WIDTH = 240;
+
+  const layoutStyle = {
+    display: "flex",
+    minHeight: "100vh",
+    backgroundColor: BG_LIGHT,
+    fontFamily: "'Inter', 'Noto Sans KR', system-ui, sans-serif",
+    color: BRAND_DARK,
+  };
+
+  // ✅ 패널이 항상 떠 있으니 메인 콘텐츠가 가리지 않게 marginLeft를 패널 전체폭으로 변경
+  const mainWrapperStyle = {
+    flex: 1,
+    padding: "18px 24px",
+    minWidth: 0,
+    marginLeft: SIDEBAR_PANEL_WIDTH,
+  };
+
+  const cardStyle = {
+    backgroundColor: "#ffffff",
+    borderRadius: 0,
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 0 0 rgba(0,0,0,0.02)",
+    padding: 14,
+  };
+
+  // ✅ 사이드메뉴: 아이콘을 "문자열"이 아니라 "이미지 변수"로
+  const sideMenus = [
+    {
+      id: "overview",
+      label: "Dashboard",
+      desc: "AI 결산 요약",
+      icon: iconApps,
+    },
+    {
+      id: "closing",
+      label: "Closing Check",
+      desc: "누락·이상 계정",
+      icon: iconCheck,
+    },
+    {
+      id: "variance",
+      label: "Variance",
+      desc: "전월 대비 분석",
+      icon: iconSignal,
+    },
+    {
+      id: "pl-report-basic",
+      label: "P&L Report",
+      desc: "결산 보고서(기본)",
+      icon: iconDoc,
+    },
+    {
+      id: "pl-report-cause",
+      label: "P&L Report 심화",
+      desc: "원인 분석(심화)",
+      icon: iconChart,
+    },
+    {
+      id: "forecast",
+      label: "Forecast",
+      desc: "미래 결산 시나리오",
+      icon: iconChart, // 6번째 탭은 동일 아이콘 재사용 (원하면 forecast 전용 추가하면 됨)
+    },
+  ];
+
+  const currentMenu = sideMenus.find((m) => m.id === tab);
+
+  // 업로드 아이콘 상태: idle / pending / uploading / uploaded
+  const costIconStatus = costUploading
+    ? "uploading"
+    : pendingCostFile
+    ? "pending"
+    : costDataUploaded
+    ? "uploaded"
+    : "idle";
+
+  const plIconStatus = plUploading
+    ? "uploading"
+    : pendingPlFile
+    ? "pending"
+    : plDataUploaded
+    ? "uploaded"
+    : "idle";
+
+  // ✅ 칩(배지) 공통 스타일: 헤더 톤 통일용
+  const chipBase = {
+    fontSize: 10,
+    fontWeight: 800,
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "rgba(248,250,252,0.85)",
+    border: "1px solid rgba(15,23,42,0.10)",
+    color: "#0f172a",
+    boxShadow: "0 4px 10px rgba(15,23,42,0.06)",
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+  };
+
+  // (기존: 아이콘 원형 스타일은 유지)
+  const getIconStyle = (status) => {
+    let bg = "#E5E7EB";
+    let border = "#9CA3AF";
+    let color = "#374151";
+
+    if (status === "pending") {
+      bg = "#DBEAFE";
+      border = "#3B82F6";
+      color = "#1D4ED8";
+    } else if (status === "uploading") {
+      bg = "#FEF3C7";
+      border = "#F59E0B";
+      color = "#C2410C";
+    } else if (status === "uploaded") {
+      bg = "#DCFCE7";
+      border = "#22C55E";
+      color = "#15803D";
+    }
+    return { bg, border, color };
+  };
+
+  const costIconStyle = getIconStyle(costIconStatus);
+  const plIconStyle = getIconStyle(plIconStatus);
+
+  const getCostStatusLabel = () => {
+    if (costIconStatus === "uploading") return "분석·반영 중...";
+    if (costIconStatus === "uploaded") return "대시보드에 반영됨";
+    if (costIconStatus === "pending") return "파일 선택됨";
+    return "";
+  };
+
+  const getPlStatusLabel = () => {
+    if (plIconStatus === "uploading") return "적용 중...";
+    if (plIconStatus === "uploaded") return "대시보드에 반영됨";
+    if (plIconStatus === "pending") return "파일 선택됨";
+    return "";
+  };
+
+  const costStatusLabel = getCostStatusLabel();
+  const plStatusLabel = getPlStatusLabel();
+
+  // =====================================================
+  // ✅ 여기부터는 렌더링 분기 (기존 유지)
+  // =====================================================
+
+  // 1) 로그인 안됐으면 LoginPage
+  if (!isLoggedIn) {
+    return (
+      <LoginPage
+        onLoginSuccess={() => {
+          setIsLoggedIn(true);
+          setStage("landing");
+          setInitProgress(0);
+
+          // ✅ 로그인 후 새 세션은 업로드 안 된 상태가 기본
+          setCostDataUploaded(false);
+          setPlDataUploaded(false);
+          setPlReportRequested(false);
+          setBackFile(null);
+        }}
+        theme={theme}
+        setTheme={setTheme}
+      />
+    );
+  }
+
+  // 2) landing / error 화면
+  if (stage === "landing") {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: BG_LIGHT,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+        }}
+      >
+        <style>{`
+          @keyframes fadeUpLogo {
+            from { opacity: 0; transform: translateY(12px) scale(0.96); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+          }
+          @keyframes fadeUpText {
+            from { opacity: 0; transform: translateY(8px); }
+            to   { opacity: 1; transform: translateY(0); }
+          }
+        `}</style>
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            marginBottom: 24,
+            animation: "fadeUpLogo 0.8s ease-out forwards",
+          }}
+        >
+          <div
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: 24,
+              backgroundColor: "#f3f4f6",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              boxShadow: "0 20px 40px rgba(15,23,42,0.18)",
+              marginBottom: 12,
+            }}
+          >
+            <img
+              src={logoSmall}
+              alt="ILJI TECH"
+              style={{
+                maxWidth: "72%",
+                maxHeight: "72%",
+                objectFit: "contain",
+              }}
+            />
+          </div>
+          <div
+            style={{
+              fontSize: 26,
+              fontWeight: 800,
+              letterSpacing: 3,
+              color: BRAND_DARK,
+              textTransform: "uppercase",
+              marginBottom: 4,
+              animation: "fadeUpText 0.9s ease-out 0.15s forwards",
+              opacity: 0,
+            }}
+          >
+            ILJI TECH
+          </div>
+          <div
+            style={{
+              fontSize: 13,
+              color: "#6b7280",
+              animation: "fadeUpText 0.9s ease-out 0.25s forwards",
+              opacity: 0,
+            }}
+          >
+            AI 기반 월 결산 모니터링 대시보드
+          </div>
+        </div>
+
+        <div
+          style={{ width: 260, marginTop: 8, fontSize: 11, color: "#6b7280" }}
+        >
+          <div
+            style={{
+              marginBottom: 6,
+              display: "flex",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>데이터 로딩 중...</span>
+            <span>{initProgress}%</span>
+          </div>
+          <div
+            style={{
+              width: "100%",
+              height: 6,
+              borderRadius: 999,
+              backgroundColor: "#e5e7eb",
+              overflow: "hidden",
+            }}
+          >
+            <div
+              style={{
+                width: `${initProgress}%`,
+                height: "100%",
+                background: "linear-gradient(90deg, #22c55e, #3b82f6, #6366f1)",
+                transition: "width 0.2s ease-out",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (stage === "error") {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: BG_LIGHT,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: 24,
+          color: BRAND_DARK,
+        }}
+      >
+        <div style={{ marginBottom: 12, fontSize: 18, fontWeight: 700 }}>
+          데이터를 불러오는 중 오류가 발생했습니다.
+        </div>
+        <div style={{ fontSize: 13, color: "#6b7280" }}>
+          백엔드 서버({API_BASE})가 실행 중인지 확인해주세요.
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setStage("landing");
+            setInitProgress(0);
+          }}
+          style={{
+            marginTop: 14,
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #e5e7eb",
+            background: "#fff",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 700,
+            color: BRAND_DARK,
+          }}
+        >
+          다시 시도
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsLoggedIn(false);
+            setStage("landing");
+            setInitProgress(0);
+          }}
+          style={{
+            marginTop: 8,
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #e5e7eb",
+            background: "#fff",
+            cursor: "pointer",
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#ef4444",
+          }}
+        >
+          로그아웃
+        </button>
+      </div>
+    );
+  }
+
+  // 3) 실제 대시보드 레이아웃 (기존 유지)
+  return (
+    <div style={layoutStyle}>
+      {/* 숨겨진 파일 input들 */}
+      <input
+        type="file"
+        accept=".xlsx,.xls"
+        ref={costFileInputRef}
+        style={{ display: "none" }}
+        onChange={handleUploadCostFile}
+      />
+      <input
+        type="file"
+        accept=".xlsx,.xls"
+        ref={plFileInputRef}
+        style={{ display: "none" }}
+        onChange={handleUploadPlFile}
+      />
+
+      {/* 왼쪽 아이콘 열 */}
+      <aside
+        style={{
+          position: "fixed",
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: SIDEBAR_ICON_WIDTH,
+          backgroundColor: "#ffffff",
+          borderRight: "1px solid #e5e7eb",
+          display: "flex",
+          flexDirection: "column",
+          padding: "18px 8px",
+          boxSizing: "border-box",
+          zIndex: 30,
+        }}
+      >
+        {/* 상단 로고 아이콘 */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 18,
+          }}
+        >
+          <div
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 10,
+              backgroundColor: "#f8fafc",
+              border: "1px solid #e5e7eb",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <img
+              src={logoSmall}
+              alt="ILJI TECH"
+              style={{
+                maxWidth: "70%",
+                maxHeight: "70%",
+                objectFit: "contain",
+              }}
+            />
+          </div>
+        </div>
+        {/* 탭 아이콘들 */}
+        <nav
+          style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}
+        >
+          {sideMenus.map((m) => {
+            const active = tab === m.id;
+
+            const ICON_BOX = 36; // 박스 크기 그대로
+            const ICON_SIZE = 20; // ⬅️ 아이콘만 살짝 키움 (기존 18 → 20)
+
+            return (
+              <button
+                key={m.id}
+                onClick={() => setTab(m.id)}
+                title={m.label}
+                style={{
+                  all: "unset",
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  padding: "4px 0", // ⬅️ 위아래 여백만 추가
+                }}
+              >
+                <div
+                  style={{
+                    width: ICON_BOX,
+                    height: ICON_BOX,
+                    minWidth: ICON_BOX,
+                    minHeight: ICON_BOX,
+                    borderRadius: 10,
+                    backgroundColor: active ? "#e2e8f0" : "#f8fafc",
+                    border: "1px solid " + (active ? "#cbd5e1" : "#e5e7eb"),
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <img
+                    src={m.icon}
+                    alt={m.label}
+                    style={{
+                      width: ICON_SIZE,
+                      height: ICON_SIZE,
+                      objectFit: "contain",
+                      opacity: active ? 1 : 0.75,
+                      display: "block",
+                    }}
+                  />
+                </div>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* 하단 업로드 아이콘들 */}
+        <div
+          style={{
+            marginTop: 12,
+            paddingTop: 12,
+            borderTop: "1px solid #e5e7eb",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            alignItems: "center",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => costFileInputRef.current?.click()}
+            style={{
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              padding: 0,
+            }}
+            title="코스트센터별 비용 업로드 (Dashboard/Closing/Variance)"
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 12,
+                backgroundColor: "#ffffff",
+                border: `1px solid ${costIconStyle.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 800,
+                color: costIconStyle.color,
+              }}
+            >
+              C
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => plFileInputRef.current?.click()}
+            style={{
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              padding: 0,
+            }}
+            title="결산보고서 Back data 업로드 (P&L)"
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 12,
+                backgroundColor: "#ffffff",
+                border: `1px solid ${plIconStyle.border}`,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 12,
+                fontWeight: 800,
+                color: plIconStyle.color,
+              }}
+            >
+              P
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsLoggedIn(false);
+              setStage("landing");
+              setInitProgress(0);
+            }}
+            style={{
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              padding: 0,
+            }}
+            title="로그아웃"
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 12,
+                backgroundColor: "#ffffff",
+                border: "1px solid #fecaca",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 11,
+                fontWeight: 900,
+                color: "#dc2626",
+              }}
+            >
+              ⎋
+            </div>
+          </button>
+        </div>
+      </aside>
+
+      {/* ✅ 오른쪽 설명/업로드 패널 (항상 표시) */}
+      <div
+        style={{
+          position: "fixed",
+          top: 0,
+          bottom: 0,
+          left: SIDEBAR_ICON_WIDTH,
+          width: SIDEBAR_PANEL_WIDTH - SIDEBAR_ICON_WIDTH,
+          backgroundColor: "#ffffff",
+          borderRight: "1px solid #e5e7eb",
+          boxSizing: "border-box",
+          padding: "16px 14px",
+          display: "flex",
+          flexDirection: "column",
+          opacity: 1,
+          transform: "translateX(0)",
+          pointerEvents: "auto",
+          transition: "none",
+          zIndex: 25,
+          fontSize: 11,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            height: 34,
+            marginBottom: 14,
+            paddingLeft: 2,
+          }}
+        >
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <span
+              style={{
+                fontSize: 14,
+                fontWeight: 900,
+                letterSpacing: 1,
+                color: BRAND_DARK,
+              }}
+            >
+              ILJI TECH
+            </span>
+            <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>
+              AI Closing Monitor
+            </span>
+          </div>
+        </div>
+
+        <nav
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            gap: 4,
+            marginBottom: 12,
+          }}
+        >
+          {sideMenus.map((m) => {
+            const active = tab === m.id;
+
+            return (
+              <button
+                key={m.id}
+                onClick={() => setTab(m.id)}
+                style={{
+                  border: "1px solid " + (active ? "#cbd5e1" : "transparent"),
+                  textAlign: "left",
+                  padding: "8px 10px",
+                  borderRadius: 12,
+                  cursor: "pointer",
+                  backgroundColor: active ? "#f1f5f9" : "transparent",
+                  color: active ? BRAND_DARK : "#64748b",
+                  transition:
+                    "background-color 0.15s ease, border-color 0.15s ease",
+                  position: "relative",
+                }}
+                onMouseEnter={(e) => {
+                  if (!active)
+                    e.currentTarget.style.backgroundColor = "#f8fafc";
+                }}
+                onMouseLeave={(e) => {
+                  if (!active)
+                    e.currentTarget.style.backgroundColor = "transparent";
+                }}
+              >
+                {/* active indicator (왼쪽 얇은 라인) */}
+                {active && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      left: 6,
+                      top: 10,
+                      bottom: 10,
+                      width: 3,
+                      borderRadius: 999,
+                      backgroundColor: "#1e40af",
+                    }}
+                  />
+                )}
+
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    paddingLeft: active ? 10 : 0,
+                  }}
+                >
+                  <span
+                    style={{ fontSize: 12, fontWeight: active ? 800 : 600 }}
+                  >
+                    {m.label}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      color: active ? "#475569" : "#94a3b8",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {m.desc}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* 업로드 영역 */}
+        <div
+          style={{
+            marginTop: 4,
+            padding: 10,
+            borderRadius: 12,
+            backgroundColor: "#f8fafc",
+            border: "1px solid #e5e7eb",
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontWeight: 800, fontSize: 10, color: "#334155" }}>
+            업로드
+          </div>
+
+          {/* Cost 데이터 */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                cursor: "pointer",
+                padding: "6px 8px",
+                borderRadius: 10,
+                backgroundColor: "#ffffff",
+                border: "1px solid #e5e7eb",
+              }}
+              onClick={() => costFileInputRef.current?.click()}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}
+                >
+                  Cost 데이터
+                </span>
+              </div>
+
+              {costStatusLabel && (
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 800,
+                    color:
+                      costIconStatus === "uploaded"
+                        ? "#16a34a"
+                        : costIconStatus === "uploading"
+                        ? "#f97316"
+                        : costIconStatus === "pending"
+                        ? "#2563eb"
+                        : "#94a3b8",
+                  }}
+                >
+                  {costStatusLabel}
+                </span>
+              )}
+            </div>
+
+            {pendingCostFile && (
+              <div
+                style={{
+                  padding: 8,
+                  borderRadius: 12,
+                  backgroundColor: "#ffffff",
+                  border: "1px dashed #cbd5e1",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flex: 1,
+                    color: "#334155",
+                    fontWeight: 700,
+                  }}
+                  title={pendingCostFile.name}
+                >
+                  {pendingCostFile.name}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleConfirmCostUpload}
+                  disabled={costUploading}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: costUploading
+                      ? "1px solid #e5e7eb"
+                      : "1px solid #16a34a",
+                    backgroundColor: "transparent",
+                    cursor: costUploading ? "default" : "pointer",
+                    fontSize: 9,
+                    fontWeight: 900,
+                    color: costUploading ? "#94a3b8" : "#16a34a",
+                  }}
+                >
+                  {costUploading ? "분석 중..." : "분석"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCancelPendingCostFile}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    color: "#64748b",
+                    padding: "0 4px",
+                  }}
+                  aria-label="cancel"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* P&L Back 데이터 */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                cursor: "pointer",
+                padding: "6px 8px",
+                borderRadius: 10,
+                backgroundColor: "#ffffff",
+                border: "1px solid #e5e7eb",
+              }}
+              onClick={() => plFileInputRef.current?.click()}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span
+                  style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}
+                >
+                  P&L Back 데이터
+                </span>
+              </div>
+
+              {plStatusLabel && (
+                <span
+                  style={{
+                    fontSize: 9,
+                    fontWeight: 800,
+                    color:
+                      plIconStatus === "uploaded"
+                        ? "#16a34a"
+                        : plIconStatus === "uploading"
+                        ? "#f97316"
+                        : plIconStatus === "pending"
+                        ? "#2563eb"
+                        : "#94a3b8",
+                  }}
+                >
+                  {plStatusLabel}
+                </span>
+              )}
+            </div>
+
+            {pendingPlFile && (
+              <div
+                style={{
+                  padding: 8,
+                  borderRadius: 12,
+                  backgroundColor: "#ffffff",
+                  border: "1px dashed #cbd5e1",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 9,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    flex: 1,
+                    color: "#334155",
+                    fontWeight: 700,
+                  }}
+                  title={pendingPlFile.name}
+                >
+                  {pendingPlFile.name}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleConfirmPlUpload}
+                  disabled={plUploading}
+                  style={{
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    border: plUploading
+                      ? "1px solid #e5e7eb"
+                      : "1px solid #16a34a",
+                    backgroundColor: "transparent",
+                    cursor: plUploading ? "default" : "pointer",
+                    fontSize: 9,
+                    fontWeight: 900,
+                    color: plUploading ? "#94a3b8" : "#16a34a",
+                  }}
+                >
+                  {plUploading ? "적용 중..." : "적용"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCancelPendingPlFile}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    cursor: "pointer",
+                    fontSize: 14,
+                    lineHeight: 1,
+                    color: "#64748b",
+                    padding: "0 4px",
+                  }}
+                  aria-label="cancel"
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 메인 콘텐츠 */}
+      <main style={mainWrapperStyle}>
+        {/* ✅ 헤더 (톤 통일: 베이스 블루 + 글라스 카드 + 칩 통일) */}
+        <header style={{ marginBottom: 10 }}>
+          <div
+            style={{
+              position: "relative",
+              overflow: "hidden",
+              padding: "20px 20px 18px",
+              margin: "-18px -24px 12px",
+              background: "#c7d7ee",
+              borderBottom: "1px solid #b9cbe1",
+              boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
+            }}
+          >
+            <div style={{ position: "relative", zIndex: 1 }}>
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 12px",
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.78)",
+                  border: "1px solid rgba(15,23,42,0.10)",
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: 0.3,
+                  color: "#0f172a",
+                  boxShadow: "0 6px 14px rgba(15,23,42,0.06)",
+                  marginBottom: 12,
+                }}
+              >
+                <span
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 999,
+                    backgroundColor: "#1e40af",
+                  }}
+                />
+                AI Closing Monitor
+              </div>
+
+              <h1
+                style={{
+                  fontSize: 26,
+                  fontWeight: 900,
+                  margin: "0 0 14px",
+                  color: "#0f172a",
+                  letterSpacing: -0.4,
+                  lineHeight: 1.15,
+                }}
+              >
+                AI 기반 월 결산 모니터링 대시보드
+              </h1>
+
+              <div
+                style={{
+                  padding: "14px 14px",
+                  borderRadius: 14,
+                  background: "rgba(255, 255, 255, 0.72)",
+                  border: "1px solid rgba(15, 23, 42, 0.10)",
+                  boxShadow: "0 12px 28px rgba(15, 23, 42, 0.10)",
+                  backdropFilter: "blur(8px)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 4 }}
+                  >
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 10 }}
+                    >
+                      <span
+                        style={{
+                          width: 4,
+                          height: 18,
+                          borderRadius: 999,
+                          backgroundColor: "#1e40af",
+                        }}
+                      />
+                      <span
+                        style={{
+                          fontSize: 15,
+                          fontWeight: 900,
+                          color: "#0f172a",
+                          letterSpacing: -0.2,
+                        }}
+                      >
+                        {currentMenu?.label || "Dashboard"}
+                      </span>
+                    </div>
+
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#334155",
+                        marginLeft: 14,
+                      }}
+                    >
+                      {currentMenu?.desc || "AI 결산 요약"}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <span style={chipBase}>
+                      <span>Month:</span>
+
+                      <select
+                        value={selectedMonth || ""}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        disabled={!costMonthMeta?.length}
+                        style={{
+                          border: "none",
+                          outline: "none",
+                          background: "transparent",
+                          padding: 0,
+                          margin: 0,
+                          fontSize: 10,
+                          fontWeight: 800,
+                          color: "#0f172a",
+                          cursor: costMonthMeta?.length
+                            ? "pointer"
+                            : "not-allowed",
+                          appearance: "none",
+                          WebkitAppearance: "none",
+                          MozAppearance: "none",
+                        }}
+                      >
+                        {!costMonthMeta?.length ? (
+                          <option value="">-</option>
+                        ) : (
+                          costMonthMeta.map((m) => (
+                            <option key={m.label} value={m.label}>
+                              {m.label}
+                            </option>
+                          ))
+                        )}
+                      </select>
+
+                      <span
+                        style={{
+                          color: "#64748b",
+                          fontWeight: 900,
+                          marginLeft: 2,
+                        }}
+                      >
+                        ▾
+                      </span>
+                    </span>
+
+                    <span
+                      style={{
+                        ...chipBase,
+                        color:
+                          costIconStatus === "uploaded"
+                            ? "#065f46"
+                            : costIconStatus === "uploading"
+                            ? "#92400e"
+                            : costIconStatus === "pending"
+                            ? "#1e40af"
+                            : "#334155",
+                      }}
+                    >
+                      Cost:{" "}
+                      {costIconStatus === "uploaded"
+                        ? "OK"
+                        : costIconStatus === "uploading"
+                        ? "Loading"
+                        : costIconStatus === "pending"
+                        ? "Ready"
+                        : "None"}
+                    </span>
+
+                    <span
+                      style={{
+                        ...chipBase,
+                        color:
+                          plIconStatus === "uploaded"
+                            ? "#065f46"
+                            : plIconStatus === "uploading"
+                            ? "#92400e"
+                            : plIconStatus === "pending"
+                            ? "#1e40af"
+                            : "#334155",
+                      }}
+                    >
+                      P&amp;L:{" "}
+                      {plIconStatus === "uploaded"
+                        ? "OK"
+                        : plIconStatus === "uploading"
+                        ? "Loading"
+                        : plIconStatus === "pending"
+                        ? "Ready"
+                        : "None"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* 탭별 렌더링 */}
+        {tab === "overview" && (
+          <OverviewTab
+            kpi={kpi}
+            monthlyTotalCost={monthlyTotalCost}
+            costMonthMeta={costMonthMeta}
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
+            accountGroupShare={accountGroupShare}
+            topCostCenters={topCostCenters}
+            closingAnalysis={closingAnalysis}
+            anomalyResult={anomalyResult}
+            varianceSummary={varianceSummary}
+            varianceData={varianceData}
+            cardStyle={cardStyle}
+          />
+        )}
+
+        {tab === "closing" && (
+          <ClosingTab
+            closingAnalysis={closingAnalysis}
+            anomalyResult={anomalyResult}
+            anomalyLoading={anomalyLoading}
+            anomalyError={anomalyError}
+            selectedIssue={selectedIssue}
+            onIssueRowClick={handleIssueRowClick}
+            cardStyle={cardStyle}
+            costMonthMeta={costMonthMeta}
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
+            closingKpi={{
+              month: selectedMonth,
+              ...kpi,
+            }}
+          />
+        )}
+
+        {tab === "variance" && (
+          <VarianceTab
+            varianceData={varianceData}
+            varianceSummary={varianceSummary}
+            monthlyTotalCost={monthlyTotalCost}
+            costMonthMeta={costMonthMeta}
+            costData={costData}
+            selectedMonth={selectedMonth}
+            setSelectedMonth={setSelectedMonth}
+            accountGroupShare={accountGroupShare}
+            closingAnalysis={closingAnalysis}
+            cardStyle={cardStyle}
+          />
+        )}
+
+        {/* ✅ 주제3: P&L 기본 */}
+        {tab === "pl-report-basic" && (
+          <PlReportTab
+            plDetailTab={plDetailTab}
+            setPlDetailTab={setPlDetailTab}
+            plViewMode={plViewMode}
+            setPlViewMode={setPlViewMode}
+            plDimension={plDimension}
+            setPlDimension={setPlDimension}
+            plPeriod={plPeriod}
+            setPlPeriod={setPlPeriod}
+            plAvailablePeriods={plAvailablePeriods}
+            plRows={plRows}
+            plSummary={plSummary}
+            waterfallData={waterfallData}
+            marginRankingData={marginRankingData}
+            salesProfitData={salesProfitData}
+            topUnitStructureData={topUnitStructureData}
+            handleBackDataFile={handleBackDataFile}
+            data={plReportData}
+            cardStyle={cardStyle}
+          />
+        )}
+
+        {/* ✅ 주제3: P&L 심화(원인 분석) */}
+        {tab === "pl-report-cause" && <PlReportCauseTab />}
+
+        {/* ✅ 주제4: Forecast */}
+        {tab === "forecast" && <ForecastTab cardStyle={cardStyle} />}
+      </main>
+    </div>
+  );
+}
+
+export default App;
