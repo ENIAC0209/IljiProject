@@ -17,6 +17,14 @@ from typing import Tuple, Dict, Any, List, Optional
 import pandas as pd
 import numpy as np
 
+# =====================================================
+# ✅ [AUTH MODE SWITCH]  (여기만 바꾸면 됨)
+# - True  : DB 연동 로그인/회원가입 (현재 방식)
+# - False : DB 없이 데모 로그인(아무 계정 OK)
+# =====================================================
+USE_DB_AUTH = True   # ✅ DB 연동 로그인/회원가입 사용
+# USE_DB_AUTH = False  # ✅ DB 없이(데모) 아무 계정이나 로그인 OK
+
 # =========================
 # 🔥 모듈 경로 강제 추가 (중요)
 # =========================
@@ -54,8 +62,11 @@ from models.closing_forecast_model import (
 )
 
 # =========================
-# ✅ DB / Auth
+# ✅ DB / Auth (DB 모드에서만 실제 사용)
 # =========================
+# ✅ NOTE:
+# - DB 모드(USE_DB_AUTH=True)일 때만 get_connection() / users 테이블 사용
+# - 데모 모드(USE_DB_AUTH=False)에서는 아래 pymysql을 import 해도 영향 없음
 import pymysql
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -90,7 +101,7 @@ def get_cache_path(name: str) -> str:
 
 
 # =========================
-# DB connection
+# DB connection (DB 모드에서만 사용)
 # =========================
 def get_connection():
     """
@@ -99,7 +110,7 @@ def get_connection():
     """
     return pymysql.connect(
         host="192.168.2.186",
-        user="song",
+        user="shee",
         password="1111",
         db="iljitech",
         charset="utf8mb4",
@@ -150,6 +161,26 @@ def api_login():
     if not username or not password:
         return jsonify({"success": False, "message": "아이디와 비밀번호를 입력해주세요."}), 400
 
+    # =====================================================
+    # ✅ 데모 모드: DB 없이 "아무 계정" 로그인 통과
+    # - 프론트에서 로그인만 성공하면 대시보드 진입 가능하도록
+    # =====================================================
+    if not USE_DB_AUTH:
+        return jsonify(
+            {
+                "success": True,
+                "user": {
+                    "id": 0,
+                    "username": username,
+                    "role": "demo",
+                },
+                "mode": "demo_no_db",
+            }
+        ), 200
+
+    # =====================================================
+    # ✅ DB 모드: users 테이블 조회 후 로그인
+    # =====================================================
     conn = None
     try:
         conn = get_connection()
@@ -185,6 +216,7 @@ def api_login():
                 "username": user["username"],
                 "role": user.get("role", "user"),
             },
+            "mode": "db",
         }
     ), 200
 
@@ -202,6 +234,16 @@ def api_signup():
     if not user_id or not password:
         return jsonify({"success": False, "message": "아이디와 비밀번호를 입력해주세요."}), 400
 
+    # =====================================================
+    # ✅ 데모 모드: DB 없이 회원가입 "성공했다고 가정"
+    # (프론트 흐름 유지 목적)
+    # =====================================================
+    if not USE_DB_AUTH:
+        return jsonify({"success": True, "message": "회원가입이 완료되었습니다. (데모/DB 미사용)"}), 200
+
+    # =====================================================
+    # ✅ DB 모드: users 테이블 INSERT
+    # =====================================================
     conn = None
     try:
         conn = get_connection()
@@ -244,6 +286,15 @@ def reset_password():
     if not identifier:
         return jsonify({"success": False, "message": "아이디 또는 이메일을 입력해주세요."}), 400
 
+    # =====================================================
+    # ✅ 데모 모드: 항상 성공 응답
+    # =====================================================
+    if not USE_DB_AUTH:
+        return jsonify({"success": True, "message": "재설정 링크를 전송했다고 가정합니다. (데모/DB 미사용)"}), 200
+
+    # =====================================================
+    # ✅ DB 모드: 사용자 존재 여부 확인
+    # =====================================================
     conn = None
     try:
         conn = get_connection()
@@ -1127,8 +1178,6 @@ def upload_pl_back_data():
         return jsonify({"error": str(e)}), 500
 
 
-
-
 # =====================================================
 # Topic3: P&L 리포트 기간 목록
 # =====================================================
@@ -1399,6 +1448,11 @@ def api_closing_forecast():
 # (선택) 서버 시작 시 DB 연결 테스트
 # =====================================================
 def test_db_connection():
+    # ✅ 데모 모드면 DB 테스트 스킵
+    if not USE_DB_AUTH:
+        print("[DB TEST] 데모 모드(USE_DB_AUTH=False) → DB 연결 테스트 스킵")
+        return
+
     conn = None
     try:
         conn = get_connection()
@@ -1420,6 +1474,3 @@ if __name__ == "__main__":
     print("[INFO] Flask 서버 시작")
     test_db_connection()
     app.run(host="0.0.0.0", port=5000, debug=True)
-# app.py (MERGED: Topic3 + Topic4 + Auth/Init/Cache)  ✅ DB 제거 + 파일(users.json) 기반 로그인/회원가입
-from flask import Flask, jsonify, request
-from flask_cors import CORS
