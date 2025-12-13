@@ -443,7 +443,7 @@ function App() {
           setPlPeriod("all");
         }
 
-        // 3) 서버에 /api/pl-report/back-data 업로드도 1회만 시도
+        // 3) 서버에 /api/pl-report/back-data 업로드도 1회만 시도 (+ need_confirm 처리)
         if (!plReportRequested) {
           const makeFormData = () => {
             const fd = new FormData();
