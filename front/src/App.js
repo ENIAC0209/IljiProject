@@ -39,6 +39,11 @@ import iconSignal from "./assets/icons/signal.png";
 import iconDoc from "./assets/icons/document.png";
 import iconChart from "./assets/icons/chart.png";
 
+// ✅ 사이드바 분리 컴포넌트
+import SidebarIcons from "./components/sidebar/SidebarIcons";
+import SidebarPanel from "./components/sidebar/SidebarPanel";
+import { getIconStyle, chipBase } from "./components/sidebar/sidebarStyles";
+
 // ===== Flask API 베이스 =====
 const API_BASE = "http://localhost:5000";
 
@@ -376,9 +381,8 @@ function App() {
   };
 
   // ==========================
-  // ✅ (주제3 공통) Back data 엑셀 파싱 + 코드분류표 매핑 + 서버 업로드 1회
-  // ==========================
   // ✅ (주제3 공통) Back data 엑셀 파싱 + 코드분류표 매핑 + 서버 업로드 1회(+중복 confirm)
+  // ==========================
   const parseAndApplyBackData = async (file) => {
     if (!file) return;
 
@@ -488,7 +492,7 @@ function App() {
                 `${API_BASE}/api/pl-report/back-data?force=1`,
                 {
                   method: "POST",
-                  body: makeFormData(), // ✅ 새 FormData로 재생성 (안전)
+                  body: makeFormData(), // ✅ 새 FormData로 재생성
                 }
               );
 
@@ -878,9 +882,6 @@ function App() {
       keys.find((k) => /cost.?center.?name/i.test(k));
 
     const history = {};
-    const rows = [];
-    let idCounter = 1;
-
     const seriesMap = new Map();
 
     costData.forEach((row) => {
@@ -903,6 +904,9 @@ function App() {
         item.series[idx] += v;
       });
     });
+
+    const rows = [];
+    let idCounter = 1;
 
     seriesMap.forEach((item, key) => {
       const s = item.series;
@@ -1342,7 +1346,7 @@ function App() {
       id: "forecast",
       label: "Forecast",
       desc: "미래 결산 시나리오",
-      icon: iconChart, // 6번째 탭은 동일 아이콘 재사용 (원하면 forecast 전용 추가하면 됨)
+      icon: iconChart,
     },
   ];
 
@@ -1364,43 +1368,6 @@ function App() {
     : plDataUploaded
     ? "uploaded"
     : "idle";
-
-  // ✅ 칩(배지) 공통 스타일: 헤더 톤 통일용
-  const chipBase = {
-    fontSize: 10,
-    fontWeight: 800,
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: "rgba(248,250,252,0.85)",
-    border: "1px solid rgba(15,23,42,0.10)",
-    color: "#0f172a",
-    boxShadow: "0 4px 10px rgba(15,23,42,0.06)",
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-  };
-
-  // (기존: 아이콘 원형 스타일은 유지)
-  const getIconStyle = (status) => {
-    let bg = "#E5E7EB";
-    let border = "#9CA3AF";
-    let color = "#374151";
-
-    if (status === "pending") {
-      bg = "#DBEAFE";
-      border = "#3B82F6";
-      color = "#1D4ED8";
-    } else if (status === "uploading") {
-      bg = "#FEF3C7";
-      border = "#F59E0B";
-      color = "#C2410C";
-    } else if (status === "uploaded") {
-      bg = "#DCFCE7";
-      border = "#22C55E";
-      color = "#15803D";
-    }
-    return { bg, border, color };
-  };
 
   const costIconStyle = getIconStyle(costIconStatus);
   const plIconStyle = getIconStyle(plIconStatus);
@@ -1633,7 +1600,7 @@ function App() {
     );
   }
 
-  // 3) 실제 대시보드 레이아웃 (기존 유지)
+  // 3) 실제 대시보드 레이아웃
   return (
     <div style={layoutStyle}>
       {/* 숨겨진 파일 input들 */}
@@ -1652,588 +1619,51 @@ function App() {
         onChange={handleUploadPlFile}
       />
 
-      {/* 왼쪽 아이콘 열 */}
-      <aside
-        style={{
-          position: "fixed",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: SIDEBAR_ICON_WIDTH,
-          backgroundColor: "#ffffff",
-          borderRight: "1px solid #e5e7eb",
-          display: "flex",
-          flexDirection: "column",
-          padding: "18px 8px",
-          boxSizing: "border-box",
-          zIndex: 30,
+      {/* ✅ 왼쪽 아이콘 열 (분리됨) */}
+      <SidebarIcons
+        sideMenus={sideMenus}
+        tab={tab}
+        setTab={setTab}
+        logoSmall={logoSmall}
+        SIDEBAR_ICON_WIDTH={SIDEBAR_ICON_WIDTH}
+        costFileInputRef={costFileInputRef}
+        plFileInputRef={plFileInputRef}
+        costIconStyle={costIconStyle}
+        plIconStyle={plIconStyle}
+        onLogout={() => {
+          setIsLoggedIn(false);
+          setStage("landing");
+          setInitProgress(0);
         }}
-      >
-        {/* 상단 로고 아이콘 */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            marginBottom: 18,
-          }}
-        >
-          <div
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              backgroundColor: "#f8fafc",
-              border: "1px solid #e5e7eb",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <img
-              src={logoSmall}
-              alt="ILJI TECH"
-              style={{
-                maxWidth: "70%",
-                maxHeight: "70%",
-                objectFit: "contain",
-              }}
-            />
-          </div>
-        </div>
-        {/* 탭 아이콘들 */}
-        <nav
-          style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}
-        >
-          {sideMenus.map((m) => {
-            const active = tab === m.id;
+      />
 
-            const ICON_BOX = 36; // 박스 크기 그대로
-            const ICON_SIZE = 20; // ⬅️ 아이콘만 살짝 키움 (기존 18 → 20)
-
-            return (
-              <button
-                key={m.id}
-                onClick={() => setTab(m.id)}
-                title={m.label}
-                style={{
-                  all: "unset",
-                  cursor: "pointer",
-                  display: "flex",
-                  justifyContent: "center",
-                  alignItems: "center",
-                  padding: "4px 0", // ⬅️ 위아래 여백만 추가
-                }}
-              >
-                <div
-                  style={{
-                    width: ICON_BOX,
-                    height: ICON_BOX,
-                    minWidth: ICON_BOX,
-                    minHeight: ICON_BOX,
-                    borderRadius: 10,
-                    backgroundColor: active ? "#e2e8f0" : "#f8fafc",
-                    border: "1px solid " + (active ? "#cbd5e1" : "#e5e7eb"),
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    boxSizing: "border-box",
-                  }}
-                >
-                  <img
-                    src={m.icon}
-                    alt={m.label}
-                    style={{
-                      width: ICON_SIZE,
-                      height: ICON_SIZE,
-                      objectFit: "contain",
-                      opacity: active ? 1 : 0.75,
-                      display: "block",
-                    }}
-                  />
-                </div>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* 하단 업로드 아이콘들 */}
-        <div
-          style={{
-            marginTop: 12,
-            paddingTop: 12,
-            borderTop: "1px solid #e5e7eb",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-            alignItems: "center",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => costFileInputRef.current?.click()}
-            style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              padding: 0,
-            }}
-            title="코스트센터별 비용 업로드 (Dashboard/Closing/Variance)"
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 12,
-                backgroundColor: "#ffffff",
-                border: `1px solid ${costIconStyle.border}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 12,
-                fontWeight: 800,
-                color: costIconStyle.color,
-              }}
-            >
-              C
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => plFileInputRef.current?.click()}
-            style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              padding: 0,
-            }}
-            title="결산보고서 Back data 업로드 (P&L)"
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 12,
-                backgroundColor: "#ffffff",
-                border: `1px solid ${plIconStyle.border}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 12,
-                fontWeight: 800,
-                color: plIconStyle.color,
-              }}
-            >
-              P
-            </div>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setIsLoggedIn(false);
-              setStage("landing");
-              setInitProgress(0);
-            }}
-            style={{
-              border: "none",
-              background: "transparent",
-              cursor: "pointer",
-              padding: 0,
-            }}
-            title="로그아웃"
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 12,
-                backgroundColor: "#ffffff",
-                border: "1px solid #fecaca",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 11,
-                fontWeight: 900,
-                color: "#dc2626",
-              }}
-            >
-              ⎋
-            </div>
-          </button>
-        </div>
-      </aside>
-
-      {/* ✅ 오른쪽 설명/업로드 패널 (항상 표시) */}
-      <div
-        style={{
-          position: "fixed",
-          top: 0,
-          bottom: 0,
-          left: SIDEBAR_ICON_WIDTH,
-          width: SIDEBAR_PANEL_WIDTH - SIDEBAR_ICON_WIDTH,
-          backgroundColor: "#ffffff",
-          borderRight: "1px solid #e5e7eb",
-          boxSizing: "border-box",
-          padding: "16px 14px",
-          display: "flex",
-          flexDirection: "column",
-          opacity: 1,
-          transform: "translateX(0)",
-          pointerEvents: "auto",
-          transition: "none",
-          zIndex: 25,
-          fontSize: 11,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            height: 34,
-            marginBottom: 14,
-            paddingLeft: 2,
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            <span
-              style={{
-                fontSize: 14,
-                fontWeight: 900,
-                letterSpacing: 1,
-                color: BRAND_DARK,
-              }}
-            >
-              ILJI TECH
-            </span>
-            <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600 }}>
-              AI Closing Monitor
-            </span>
-          </div>
-        </div>
-
-        <nav
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            marginBottom: 12,
-          }}
-        >
-          {sideMenus.map((m) => {
-            const active = tab === m.id;
-
-            return (
-              <button
-                key={m.id}
-                onClick={() => setTab(m.id)}
-                style={{
-                  border: "1px solid " + (active ? "#cbd5e1" : "transparent"),
-                  textAlign: "left",
-                  padding: "8px 10px",
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  backgroundColor: active ? "#f1f5f9" : "transparent",
-                  color: active ? BRAND_DARK : "#64748b",
-                  transition:
-                    "background-color 0.15s ease, border-color 0.15s ease",
-                  position: "relative",
-                }}
-                onMouseEnter={(e) => {
-                  if (!active)
-                    e.currentTarget.style.backgroundColor = "#f8fafc";
-                }}
-                onMouseLeave={(e) => {
-                  if (!active)
-                    e.currentTarget.style.backgroundColor = "transparent";
-                }}
-              >
-                {/* active indicator (왼쪽 얇은 라인) */}
-                {active && (
-                  <span
-                    style={{
-                      position: "absolute",
-                      left: 6,
-                      top: 10,
-                      bottom: 10,
-                      width: 3,
-                      borderRadius: 999,
-                      backgroundColor: "#1e40af",
-                    }}
-                  />
-                )}
-
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    paddingLeft: active ? 10 : 0,
-                  }}
-                >
-                  <span
-                    style={{ fontSize: 12, fontWeight: active ? 800 : 600 }}
-                  >
-                    {m.label}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: 10,
-                      color: active ? "#475569" : "#94a3b8",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {m.desc}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* 업로드 영역 */}
-        <div
-          style={{
-            marginTop: 4,
-            padding: 10,
-            borderRadius: 12,
-            backgroundColor: "#f8fafc",
-            border: "1px solid #e5e7eb",
-            display: "flex",
-            flexDirection: "column",
-            gap: 10,
-          }}
-        >
-          <div style={{ fontWeight: 800, fontSize: 10, color: "#334155" }}>
-            업로드
-          </div>
-
-          {/* Cost 데이터 */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                cursor: "pointer",
-                padding: "6px 8px",
-                borderRadius: 10,
-                backgroundColor: "#ffffff",
-                border: "1px solid #e5e7eb",
-              }}
-              onClick={() => costFileInputRef.current?.click()}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span
-                  style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}
-                >
-                  Cost 데이터
-                </span>
-              </div>
-
-              {costStatusLabel && (
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 800,
-                    color:
-                      costIconStatus === "uploaded"
-                        ? "#16a34a"
-                        : costIconStatus === "uploading"
-                        ? "#f97316"
-                        : costIconStatus === "pending"
-                        ? "#2563eb"
-                        : "#94a3b8",
-                  }}
-                >
-                  {costStatusLabel}
-                </span>
-              )}
-            </div>
-
-            {pendingCostFile && (
-              <div
-                style={{
-                  padding: 8,
-                  borderRadius: 12,
-                  backgroundColor: "#ffffff",
-                  border: "1px dashed #cbd5e1",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 9,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    flex: 1,
-                    color: "#334155",
-                    fontWeight: 700,
-                  }}
-                  title={pendingCostFile.name}
-                >
-                  {pendingCostFile.name}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleConfirmCostUpload}
-                  disabled={costUploading}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: costUploading
-                      ? "1px solid #e5e7eb"
-                      : "1px solid #16a34a",
-                    backgroundColor: "transparent",
-                    cursor: costUploading ? "default" : "pointer",
-                    fontSize: 9,
-                    fontWeight: 900,
-                    color: costUploading ? "#94a3b8" : "#16a34a",
-                  }}
-                >
-                  {costUploading ? "분석 중..." : "분석"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCancelPendingCostFile}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    lineHeight: 1,
-                    color: "#64748b",
-                    padding: "0 4px",
-                  }}
-                  aria-label="cancel"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* P&L Back 데이터 */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                cursor: "pointer",
-                padding: "6px 8px",
-                borderRadius: 10,
-                backgroundColor: "#ffffff",
-                border: "1px solid #e5e7eb",
-              }}
-              onClick={() => plFileInputRef.current?.click()}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <span
-                  style={{ fontSize: 11, fontWeight: 700, color: "#0f172a" }}
-                >
-                  P&L Back 데이터
-                </span>
-              </div>
-
-              {plStatusLabel && (
-                <span
-                  style={{
-                    fontSize: 9,
-                    fontWeight: 800,
-                    color:
-                      plIconStatus === "uploaded"
-                        ? "#16a34a"
-                        : plIconStatus === "uploading"
-                        ? "#f97316"
-                        : plIconStatus === "pending"
-                        ? "#2563eb"
-                        : "#94a3b8",
-                  }}
-                >
-                  {plStatusLabel}
-                </span>
-              )}
-            </div>
-
-            {pendingPlFile && (
-              <div
-                style={{
-                  padding: 8,
-                  borderRadius: 12,
-                  backgroundColor: "#ffffff",
-                  border: "1px dashed #cbd5e1",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 9,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    flex: 1,
-                    color: "#334155",
-                    fontWeight: 700,
-                  }}
-                  title={pendingPlFile.name}
-                >
-                  {pendingPlFile.name}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleConfirmPlUpload}
-                  disabled={plUploading}
-                  style={{
-                    padding: "4px 10px",
-                    borderRadius: 999,
-                    border: plUploading
-                      ? "1px solid #e5e7eb"
-                      : "1px solid #16a34a",
-                    backgroundColor: "transparent",
-                    cursor: plUploading ? "default" : "pointer",
-                    fontSize: 9,
-                    fontWeight: 900,
-                    color: plUploading ? "#94a3b8" : "#16a34a",
-                  }}
-                >
-                  {plUploading ? "적용 중..." : "적용"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleCancelPendingPlFile}
-                  style={{
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                    fontSize: 14,
-                    lineHeight: 1,
-                    color: "#64748b",
-                    padding: "0 4px",
-                  }}
-                  aria-label="cancel"
-                >
-                  ×
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
+      {/* ✅ 오른쪽 설명/업로드 패널 (분리됨) */}
+      <SidebarPanel
+        sideMenus={sideMenus}
+        tab={tab}
+        setTab={setTab}
+        SIDEBAR_ICON_WIDTH={SIDEBAR_ICON_WIDTH}
+        SIDEBAR_PANEL_WIDTH={SIDEBAR_PANEL_WIDTH}
+        BRAND_DARK={BRAND_DARK}
+        costFileInputRef={costFileInputRef}
+        plFileInputRef={plFileInputRef}
+        costStatusLabel={costStatusLabel}
+        plStatusLabel={plStatusLabel}
+        costIconStatus={costIconStatus}
+        plIconStatus={plIconStatus}
+        pendingCostFile={pendingCostFile}
+        pendingPlFile={pendingPlFile}
+        handleConfirmCostUpload={handleConfirmCostUpload}
+        handleCancelPendingCostFile={handleCancelPendingCostFile}
+        costUploading={costUploading}
+        handleConfirmPlUpload={handleConfirmPlUpload}
+        handleCancelPendingPlFile={handleCancelPendingPlFile}
+        plUploading={plUploading}
+      />
 
       {/* 메인 콘텐츠 */}
       <main style={mainWrapperStyle}>
-        {/* ✅ 헤더 (톤 통일: 베이스 블루 + 글라스 카드 + 칩 통일) */}
+        {/* ✅ 헤더 */}
         <header style={{ marginBottom: 10 }}>
           <div
             style={{
