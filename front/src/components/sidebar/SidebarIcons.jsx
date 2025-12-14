@@ -43,7 +43,8 @@ export default function SidebarIcons({
   const menuRef = useRef(null);
   const popupRef = useRef(null);
 
-  const [popupPos, setPopupPos] = useState({ left: 0, top: 0, width: 190 });
+  // ✅ 팝업은 이제 "아이콘 옆"에 absolute로 붙일거라, anchor 내부 좌표 사용
+  const [popupPos, setPopupPos] = useState({ left: 40, top: -160, width: 190 });
 
   useEffect(() => {
     const onDown = (e) => {
@@ -88,29 +89,56 @@ export default function SidebarIcons({
   const pickPl = () =>
     onPickPlFile ? onPickPlFile() : plFileInputRef.current?.click();
 
-  // ✅ 팝업 열릴 때 viewport 밖으로 안 나가게 clamp
+  // ✅ 팝업 열릴 때: "아이콘 오른쪽에 붙이고", 위아래만 화면 밖 안나가게 clamp
   useLayoutEffect(() => {
     if (!openUploadMenu) return;
-
-    const PADDING = 10;
-    const POP_W = 190;
-    const POP_H_EST = 210;
-
     const anchor = menuRef.current;
     if (!anchor) return;
+
+    const POP_W = 190;
+    const POP_H_EST = 210;
+    const GAP = 8;
+
+    // anchor 내부 absolute 기준 좌표
+    // left: 아이콘(32px) + GAP
+    let left = 32 + GAP;
+
+    // top: 팝업이 아이콘과 "세로 중앙" 정도 맞도록
+    // 아이콘 높이 32 기준: top = -(POP_H_EST/2 - 16)
+    let top = -(POP_H_EST / 2 - 16);
+
+    // viewport clamp는 anchor의 화면 좌표 + (left/top)로 계산
     const rect = anchor.getBoundingClientRect();
-
-    let left = rect.left + rect.width + 10;
-    let top = rect.bottom - POP_H_EST;
-
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const PADDING = 10;
 
-    if (left + POP_W > vw - PADDING) left = vw - POP_W - PADDING;
-    if (left < PADDING) left = PADDING;
+    // 팝업의 화면상 위치
+    let screenLeft = rect.left + left;
+    let screenTop = rect.top + top;
 
-    if (top + POP_H_EST > vh - PADDING) top = vh - POP_H_EST - PADDING;
-    if (top < PADDING) top = PADDING;
+    // 오른쪽이 화면 넘어가면 left를 줄여서 "왼쪽으로" (필요시)
+    if (screenLeft + POP_W > vw - PADDING) {
+      const overflow = screenLeft + POP_W - (vw - PADDING);
+      left = Math.max(PADDING - rect.left, left - overflow);
+      screenLeft = rect.left + left;
+    }
+    // 왼쪽이 화면 밖이면
+    if (screenLeft < PADDING) {
+      left += PADDING - screenLeft;
+      screenLeft = rect.left + left;
+    }
+
+    // 아래가 화면 넘어가면 top 조정
+    if (screenTop + POP_H_EST > vh - PADDING) {
+      const overflow = screenTop + POP_H_EST - (vh - PADDING);
+      top = top - overflow;
+      screenTop = rect.top + top;
+    }
+    // 위가 화면 밖이면
+    if (screenTop < PADDING) {
+      top = top + (PADDING - screenTop);
+    }
 
     setPopupPos({ left, top, width: POP_W });
   }, [openUploadMenu]);
@@ -121,7 +149,6 @@ export default function SidebarIcons({
     return s.slice(0, maxLen) + "…";
   };
 
-  // ✅ “파일만” 보여주는 한 줄 박스 (pending/업로드완료 공용)
   const FileOnlyRow = ({ file, onCancel, dotColor = "#3b82f6" }) => {
     if (!file) return null;
     return (
@@ -214,25 +241,11 @@ export default function SidebarIcons({
     </button>
   );
 
-  // ✅ 파일이 선택되면 “Cost 데이터 버튼/글자”는 보여주지 않음
-  // - pendingCostFile 있으면: 파일표시 + 분석버튼
-  // - 없으면: 기존 선택 버튼만
   const CostBlock = () => {
     const hasFile = !!pendingCostFile;
 
     return (
       <div style={{ marginTop: 10 }}>
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 900,
-            color: "#0f172a",
-            marginBottom: 6,
-          }}
-        >
-          Cost
-        </div>
-
         {!hasFile ? (
           <button
             type="button"
@@ -272,7 +285,6 @@ export default function SidebarIcons({
           </button>
         ) : (
           <>
-            {/* ✅ 파일이 선택된 순간부터는 버튼/글자 숨기고 파일만 “위에” 표시 */}
             <FileOnlyRow
               file={pendingCostFile}
               onCancel={onCancelCost}
@@ -294,17 +306,6 @@ export default function SidebarIcons({
 
     return (
       <div style={{ marginTop: 12 }}>
-        <div
-          style={{
-            fontSize: 10,
-            fontWeight: 900,
-            color: "#0f172a",
-            marginBottom: 6,
-          }}
-        >
-          P&amp;L
-        </div>
-
         {!hasFile ? (
           <button
             type="button"
@@ -563,36 +564,35 @@ export default function SidebarIcons({
               )}
             </div>
           </button>
-        </div>
 
-        {/* 팝업 */}
-        {openUploadMenu && (
-          <div
-            ref={popupRef}
-            style={{
-              position: "fixed",
-              left: popupPos.left,
-              top: popupPos.top,
-              width: popupPos.width,
-              maxWidth: "calc(100vw - 20px)",
-              background: "#ffffff",
-              border: "1px solid #e5e7eb",
-              borderRadius: 12,
-              boxShadow: "0 18px 40px rgba(15,23,42,0.12)",
-              padding: 10,
-              zIndex: 60,
-              boxSizing: "border-box",
-              overflow: "hidden",
-            }}
-          >
-            <div style={{ fontSize: 11, fontWeight: 900, color: "#0f172a" }}>
-              업로드
+          {/* ✅ 팝업: 아이콘 "바로 옆"에 붙는 absolute */}
+          {openUploadMenu && (
+            <div
+              ref={popupRef}
+              style={{
+                position: "absolute",
+                left: popupPos.left,
+                top: popupPos.top,
+                width: popupPos.width,
+                background: "#ffffff",
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                boxShadow: "0 18px 40px rgba(15,23,42,0.12)",
+                padding: 10,
+                zIndex: 60,
+                boxSizing: "border-box",
+                overflow: "hidden",
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 900, color: "#0f172a" }}>
+                업로드
+              </div>
+
+              <CostBlock />
+              <PlBlock />
             </div>
-
-            <CostBlock />
-            <PlBlock />
-          </div>
-        )}
+          )}
+        </div>
 
         {/* 로그아웃 */}
         <button

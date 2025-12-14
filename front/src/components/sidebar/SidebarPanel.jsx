@@ -89,6 +89,7 @@ export default function SidebarPanel({
           flexDirection: "column",
           gap: 4,
           marginBottom: 12,
+          marginTop: 13,
         }}
       >
         {sideMenus.map((m) => {
