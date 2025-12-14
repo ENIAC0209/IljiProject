@@ -1,4 +1,6 @@
-# app.py (MERGED: Topic3 + Topic4 + Auth/Init/Cache)
+# =========================
+# app.py  (MODIFIED)
+# =========================
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -18,17 +20,15 @@ import pandas as pd
 import numpy as np
 
 # =====================================================
-# ✅ [AUTH MODE SWITCH]  (여기만 바꾸면 됨)
-# - True  : DB 연동 로그인/회원가입 (현재 방식)
-# - False : DB 없이 데모 로그인(아무 계정 OK)
+# ✅ [AUTH MODE SWITCH]
 # =====================================================
-USE_DB_AUTH = 0   # ✅ DB 연동 로그인/회원가입 사용
-# USE_DB_AUTH = False  # ✅ DB 없이(데모) 아무 계정이나 로그인 OK
+USE_DB_AUTH = False  # ✅ 기본: 데모 모드
+# USE_DB_AUTH = True  # ✅ DB 모드
 
 # =========================
 # 🔥 모듈 경로 강제 추가 (중요)
 # =========================
-BASE_DIR = Path(__file__).resolve().parent  # .../flaskbackend
+BASE_DIR = Path(__file__).resolve().parent
 if str(BASE_DIR) not in sys.path:
     sys.path.append(str(BASE_DIR))
 
@@ -36,7 +36,7 @@ if str(BASE_DIR) not in sys.path:
 # ✅ cost_center pipeline imports
 # =========================
 from cost_center import (
-    parse_cost_center_excel,  # (호환용) 필요시 사용
+    parse_cost_center_excel,
     detect_potential_missing,
     build_features,
     compute_corr_pairs,
@@ -48,8 +48,6 @@ from cost_center import (
 # ✅ P&L Report (Topic3)
 # =========================
 from report_test import generate_pl_report_df
-
-# ✅ P&L Cause (Topic3)
 from pl_cause import analyze_pl_cause, list_available_periods
 
 # =========================
@@ -62,55 +60,32 @@ from models.closing_forecast_model import (
 )
 
 # =========================
-# ✅ DB / Auth (DB 모드에서만 실제 사용)
+# ✅ DB / Auth
 # =========================
-# ✅ NOTE:
-# - DB 모드(USE_DB_AUTH=True)일 때만 get_connection() / users 테이블 사용
-# - 데모 모드(USE_DB_AUTH=False)에서는 아래 pymysql을 import 해도 영향 없음
 import pymysql
 from werkzeug.security import check_password_hash, generate_password_hash
 
-# =========================
-# Flask app
-# =========================
 app = Flask(__name__)
 CORS(app)
 
-# =========================
-# Paths / Dirs
-# =========================
 CACHE_DIR = BASE_DIR / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-# 월별 코스트센터 엑셀 폴더 (기준 프로젝트 구조)
 COST_MONTHLY_DIR = BASE_DIR / "centercost_data"
-
-# P&L Back data 기본 파일(기존 탭에서 쓰던 원시 데이터)
 BACKDATA_EXCEL_PATH = BASE_DIR / "3back_data_with_fake11_v2.xlsx"
 
-# P&L 통합/산출 파일 저장 폴더 (Topic3)
 REPORT_DATA_DIR = BASE_DIR / "report_data"
 REPORT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-# (선택) 2년치 기준 데이터(Topic3 구버전 호환용)
-BASE_EXCEL_PATH = str(BASE_DIR / "코스트센터_2년치_가상데이터_전체.xlsx")
 
 
 def get_cache_path(name: str) -> str:
     return str(CACHE_DIR / name)
 
 
-# =========================
-# DB connection (DB 모드에서만 사용)
-# =========================
 def get_connection():
-    """
-    MySQL 연결 함수.
-    실제 환경에 맞게 host / user / password / db 값을 수정해야 합니다.
-    """
     return pymysql.connect(
         host="192.168.2.186",
-        user="song",
+        user="shee",
         password="1111",
         db="iljitech",
         charset="utf8mb4",
@@ -118,14 +93,42 @@ def get_connection():
     )
 
 
-# =========================
-# Topic4: 서버 시작 시 1회 모델 로딩
-# =========================
+# ✅ 서버 시작 시 1회 모델 로딩
 forecast_payload = load_or_train()
 
 
 # =====================================================
-# 유틸: 파일명에서 연/월 추출 (예: '25년_03월_결산보고서_통합_...' )
+# ✅ (추가) 사유 요약 생성 유틸
+# - 표(리스트)에서는 reason_summary를 쓰고
+# - 상세(선택 이슈 추이)에서는 reason_kor(원문)를 그대로 사용
+# =====================================================
+def _summarize_reason(reason_kor: str, reason_tags, display_issue_type: str) -> str:
+    tags = []
+    if isinstance(reason_tags, list):
+        tags = [str(x).strip() for x in reason_tags if str(x).strip()]
+    elif reason_tags:
+        tags = [x.strip() for x in re.split(r"[,|/]", str(reason_tags)) if x.strip()]
+
+    # 1) 태그가 있으면 태그 중심 요약(최대 2개)
+    if tags:
+        # 너무 길어지면 2개까지만
+        return " · ".join(tags[:2])
+
+    # 2) 태그가 없으면 이슈 타입 기반 + 원문 첫 문장/앞부분
+    base = str(display_issue_type or "").strip() or "이슈"
+    s = (reason_kor or "").strip()
+    if not s:
+        return base
+
+    # 첫 문장 느낌으로 잘라주기(너무 길면 줄임)
+    cut = s.split(" / ")[0].split("\n")[0].strip()
+    if len(cut) > 28:
+        cut = cut[:28].rstrip() + "…"
+    return f"{base}: {cut}"
+
+
+# =====================================================
+# 유틸: 파일명에서 연/월 추출
 # =====================================================
 def _parse_year_month_from_report_filename(path: Path) -> Optional[Tuple[int, int]]:
     name = path.name
@@ -140,17 +143,11 @@ def _parse_year_month_from_report_filename(path: Path) -> Optional[Tuple[int, in
     return year, mm
 
 
-# =====================================================
-# 0. Health
-# =====================================================
 @app.route("/api/health", methods=["GET"])
 def health_check():
     return jsonify({"status": "ok"})
 
 
-# =====================================================
-# 0-2. Login
-# =====================================================
 @app.route("/api/login", methods=["POST"])
 def api_login():
     data = request.get_json() or {}
@@ -161,26 +158,15 @@ def api_login():
     if not username or not password:
         return jsonify({"success": False, "message": "아이디와 비밀번호를 입력해주세요."}), 400
 
-    # =====================================================
-    # ✅ 데모 모드: DB 없이 "아무 계정" 로그인 통과
-    # - 프론트에서 로그인만 성공하면 대시보드 진입 가능하도록
-    # =====================================================
     if not USE_DB_AUTH:
         return jsonify(
             {
                 "success": True,
-                "user": {
-                    "id": 0,
-                    "username": username,
-                    "role": "demo",
-                },
+                "user": {"id": 0, "username": username, "role": "demo"},
                 "mode": "demo_no_db",
             }
         ), 200
 
-    # =====================================================
-    # ✅ DB 모드: users 테이블 조회 후 로그인
-    # =====================================================
     conn = None
     try:
         conn = get_connection()
@@ -211,19 +197,12 @@ def api_login():
     return jsonify(
         {
             "success": True,
-            "user": {
-                "id": user["id"],
-                "username": user["username"],
-                "role": user.get("role", "user"),
-            },
+            "user": {"id": user["id"], "username": user["username"], "role": user.get("role", "user")},
             "mode": "db",
         }
     ), 200
 
 
-# =====================================================
-# 0-3. Signup
-# =====================================================
 @app.route("/api/signup", methods=["POST"])
 def api_signup():
     data = request.get_json() or {}
@@ -234,16 +213,9 @@ def api_signup():
     if not user_id or not password:
         return jsonify({"success": False, "message": "아이디와 비밀번호를 입력해주세요."}), 400
 
-    # =====================================================
-    # ✅ 데모 모드: DB 없이 회원가입 "성공했다고 가정"
-    # (프론트 흐름 유지 목적)
-    # =====================================================
     if not USE_DB_AUTH:
         return jsonify({"success": True, "message": "회원가입이 완료되었습니다. (데모/DB 미사용)"}), 200
 
-    # =====================================================
-    # ✅ DB 모드: users 테이블 INSERT
-    # =====================================================
     conn = None
     try:
         conn = get_connection()
@@ -275,9 +247,6 @@ def api_signup():
     return jsonify({"success": True, "message": "회원가입이 완료되었습니다."}), 200
 
 
-# =====================================================
-# 0-4. Reset Password (Demo)
-# =====================================================
 @app.route("/api/reset-password", methods=["POST"])
 def reset_password():
     data = request.get_json() or {}
@@ -286,15 +255,9 @@ def reset_password():
     if not identifier:
         return jsonify({"success": False, "message": "아이디 또는 이메일을 입력해주세요."}), 400
 
-    # =====================================================
-    # ✅ 데모 모드: 항상 성공 응답
-    # =====================================================
     if not USE_DB_AUTH:
         return jsonify({"success": True, "message": "재설정 링크를 전송했다고 가정합니다. (데모/DB 미사용)"}), 200
 
-    # =====================================================
-    # ✅ DB 모드: 사용자 존재 여부 확인
-    # =====================================================
     conn = None
     try:
         conn = get_connection()
@@ -357,9 +320,6 @@ def load_all_monthly_cost_long() -> pd.DataFrame:
     return df_all
 
 
-# =====================================================
-# 1-B. long → wide 변환 (1~3탭용 costData 생성)
-# =====================================================
 def build_wide_cost_data(df: pd.DataFrame) -> pd.DataFrame:
     required_cols = ["cost_center", "cc_name", "account_code", "account_name", "year_month", "amount"]
     missing = [c for c in required_cols if c not in df.columns]
@@ -383,7 +343,6 @@ def build_wide_cost_data(df: pd.DataFrame) -> pd.DataFrame:
 
     pivot.columns = [str(c) for c in pivot.columns]
 
-    # 프론트 호환용(한글 컬럼 복제)
     if "cc_name" in pivot.columns:
         if "코스트센터명" not in pivot.columns:
             idx = pivot.columns.get_loc("cc_name") + 1
@@ -399,9 +358,6 @@ def build_wide_cost_data(df: pd.DataFrame) -> pd.DataFrame:
     return pivot
 
 
-# =====================================================
-# 1-C. wide 포맷 로딩 + 캐시
-# =====================================================
 def load_cost_center_data(use_cache: bool = True) -> pd.DataFrame:
     cache_path = get_cache_path("costData_wide.pkl")
 
@@ -425,9 +381,6 @@ def load_cost_center_data(use_cache: bool = True) -> pd.DataFrame:
     return df_wide
 
 
-# =====================================================
-# 2. P&L Backdata 로딩 (init-data용)
-# =====================================================
 def load_pl_backdata():
     if not BACKDATA_EXCEL_PATH.exists():
         raise FileNotFoundError(f"Backdata file not found: {BACKDATA_EXCEL_PATH}")
@@ -485,9 +438,6 @@ def load_pl_backdata():
     return back_records, codeNameMap
 
 
-# =====================================================
-# 3. init-data : 대시보드 초기 로딩 데이터
-# =====================================================
 @app.route("/api/init-data", methods=["GET"])
 def init_data():
     try:
@@ -506,12 +456,7 @@ def init_data():
 
     anomalyData: List[Dict[str, Any]] = []
     return jsonify(
-        {
-            "costData": costData,
-            "backData": backData,
-            "codeNameMap": codeNameMap,
-            "anomalyData": anomalyData,
-        }
+        {"costData": costData, "backData": backData, "codeNameMap": codeNameMap, "anomalyData": anomalyData}
     )
 
 
@@ -596,9 +541,6 @@ def parse_single_month_excel(file_stream: io.BytesIO) -> pd.DataFrame:
     return df.reset_index(drop=True)
 
 
-# =====================================================
-# (공용) 히스토리 맵 + 정상구간 밴드
-# =====================================================
 def build_history_map(df: pd.DataFrame) -> Dict[str, List[Dict[str, Any]]]:
     hist: Dict[str, List[Dict[str, Any]]] = {}
     df = df.copy()
@@ -677,9 +619,6 @@ def add_normal_band(df: pd.DataFrame, window: int = 6, min_periods: int = 1) -> 
     return df
 
 
-# =====================================================
-# 5. 업로드 월 + 폴더 전체 합쳐서 이상탐지 파이프라인
-# =====================================================
 def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
     if upload_df.empty:
         raise ValueError("업로드된 데이터에 내용이 없습니다.")
@@ -695,10 +634,8 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
     df_all = compute_corr_pairs(df_all)
     df_all = run_ensemble_outlier(df_all)
     df_all = build_human_explanations(df_all)
-
     df_all = add_normal_band(df_all)
 
-    # 업데이트된 wide costData까지 내려줌(프론트 즉시 반영)
     wide_df = build_wide_cost_data(df_all)
     cost_data_updated = wide_df.to_dict(orient="records")
 
@@ -801,6 +738,10 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
         else:
             display_issue_type = str(row.get("issue_type"))
 
+        reason_kor = str(row.get("reason_kor") or "")
+        reason_tags = row.get("reason_tags", [])
+        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type)
+
         issues.append(
             {
                 "row_key": row_key,
@@ -816,8 +757,9 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
                 "issue_type": str(row.get("issue_type")),
                 "severity_rank": int(row.get("severity_rank", 1)),
                 "status": row.get("status"),
-                "reason_kor": str(row.get("reason_kor")),
-                "reason_tags": row.get("reason_tags", []),
+                "reason_kor": reason_kor,
+                "reason_summary": reason_summary,  # ✅ 추가
+                "reason_tags": reason_tags,
                 "zscore_12": float(row.get("zscore_12")) if pd.notna(row.get("zscore_12")) else None,
                 "dev_3m": float(row.get("dev_3m")) if pd.notna(row.get("dev_3m")) else None,
                 "iso_score": float(row.get("iso_score")) if pd.notna(row.get("iso_score")) else None,
@@ -830,18 +772,9 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
             }
         )
 
-    return {
-        "summary": summary,
-        "centers": centers,
-        "issues": issues,
-        "history": history_map,
-        "costData": cost_data_updated,
-    }
+    return {"summary": summary, "centers": centers, "issues": issues, "history": history_map, "costData": cost_data_updated}
 
 
-# =====================================================
-# 6. 업로드 분석 API: /api/cost-center/analyze
-# =====================================================
 @app.route("/api/cost-center/analyze", methods=["POST"])
 def analyze_cost_center():
     if "file" not in request.files:
@@ -860,9 +793,6 @@ def analyze_cost_center():
         return jsonify({"error": str(e)}), 500
 
 
-# =====================================================
-# 7. 기본 분석(최근 월) + 캐시: /api/cost-center/analyze-default
-# =====================================================
 def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
     cache_path = get_cache_path("default_anomaly_result.pkl")
 
@@ -957,6 +887,27 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
     issues: List[Dict[str, Any]] = []
     for _, row in issue_df.iterrows():
         row_key = f"{row.get('cost_center')}|{row.get('account_code')}"
+
+        # display label
+        amt_val = row.get("amount")
+        is_missing_like = False
+        try:
+            if pd.isna(amt_val) or float(amt_val) == 0.0:
+                is_missing_like = True
+        except Exception:
+            pass
+
+        if is_missing_like:
+            display_issue_type = "누락"
+        elif str(row.get("issue_type")) == "이상치 의심":
+            display_issue_type = "이상"
+        else:
+            display_issue_type = str(row.get("issue_type"))
+
+        reason_kor = str(row.get("reason_kor") or "")
+        reason_tags = row.get("reason_tags", [])
+        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type)
+
         issues.append(
             {
                 "row_key": row_key,
@@ -972,7 +923,9 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
                 "issue_type": str(row.get("issue_type")),
                 "severity_rank": int(row.get("severity_rank", 1)),
                 "status": row.get("status"),
-                "reason_kor": str(row.get("reason_kor")),
+                "reason_kor": reason_kor,
+                "reason_summary": reason_summary,  # ✅ 추가
+                "reason_tags": reason_tags,         # ✅ 프론트 상세용
                 "zscore_12": float(row.get("zscore_12")) if pd.notna(row.get("zscore_12")) else None,
                 "dev_3m": float(row.get("dev_3m")) if pd.notna(row.get("dev_3m")) else None,
                 "iso_score": float(row.get("iso_score")) if pd.notna(row.get("iso_score")) else None,
@@ -1003,58 +956,9 @@ def analyze_cost_center_default():
         return jsonify({"error": str(e)}), 500
 
 
-# =====================================================
-# (추가) 업로드 파일명에서 연/월 추출 (예: '25년_03월_...', '2025-03_...', '2025_03...')
-# =====================================================
-def _parse_year_month_from_upload_filename(filename: str) -> Optional[Tuple[int, int]]:
-    name = str(filename or "")
-
-    # 1) '25년_03월' or '25년 03월'
-    m = re.search(r"(\d{2})\s*년[_\s\-\.]*(\d{1,2})\s*월", name)
-    if m:
-        yy = int(m.group(1))
-        mm = int(m.group(2))
-        if 1 <= mm <= 12:
-            return (2000 + yy, mm)
-
-    # 2) '2025-03' / '2025_03' / '2025.03'
-    m = re.search(r"(20\d{2})[_\-\.](\d{1,2})", name)
-    if m:
-        year = int(m.group(1))
-        mm = int(m.group(2))
-        if 1 <= mm <= 12:
-            return (year, mm)
-
-    return None
-
-
-def _find_existing_pl_files_for_period(year: int, month: int) -> Dict[str, List[Path]]:
-    """
-    같은 연/월에 해당하는 기존 파일들을 찾아서 반환
-    - 통합 리포트(결산보고서_통합)
-    - back_data 파일
-    """
-    yy2 = year % 100
-    mm2 = month
-
-    report_candidates = sorted(
-        REPORT_DATA_DIR.glob(f"{yy2:02d}년_{mm2:02d}월*결산보고서_통합*.xlsx"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-
-    back_candidates = sorted(
-        list(REPORT_DATA_DIR.glob(f"{yy2:02d}년_{mm2:02d}월*back_data*.xlsx"))
-        + list(REPORT_DATA_DIR.glob(f"{yy2:02d}년_{mm2:02d}월*결산보고서_back_data*.xlsx")),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-
-    return {"reports": report_candidates, "backs": back_candidates}
-
 
 # =====================================================
-# Topic3: P&L Back data 업로드 + 통합 리포트 생성 (✅ 연/월 중복 시 확인 → force 덮어쓰기)
+# Topic3: P&L Back data 업로드 + 통합 리포트 생성
 # =====================================================
 @app.route("/api/pl-report/back-data", methods=["POST"])
 def upload_pl_back_data():
@@ -1071,20 +975,14 @@ def upload_pl_back_data():
         REPORT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
         original_name = f.filename
-
-        # ✅ 연/월을 파일명에서 추출 (핵심)
         ym = _parse_year_month_from_upload_filename(original_name)
-
-        # 파일 저장 경로(원본 파일명 유지)
         original_path = REPORT_DATA_DIR / original_name
 
-        # 통합 리포트 파일명은 "연/월" 기반으로 고정 생성(덮어쓰기 관리 용이)
         if ym:
             year, month = ym
             yy2 = year % 100
             report_stem = f"{yy2:02d}년_{month:02d}월_결산보고서_통합"
         else:
-            # fallback: 기존 로직 유지(파일명 기반)
             stem = Path(original_name).stem
             if "결산보고서_back_data" in stem:
                 report_stem = stem.replace("결산보고서_back_data", "결산보고서_통합")
@@ -1095,7 +993,6 @@ def upload_pl_back_data():
 
         report_path = REPORT_DATA_DIR / f"{report_stem}.xlsx"
 
-        # ✅ (1) 연/월 파싱 성공 시: 같은 연/월 통합 파일 존재하면 confirm 필요
         if ym:
             year, month = ym
             existing = _find_existing_pl_files_for_period(year, month)
@@ -1112,14 +1009,12 @@ def upload_pl_back_data():
                     }
                 )
 
-            # force면: 같은 연/월 기존 파일들 싹 삭제 후 재생성
             if force:
                 for p in existing["reports"] + existing["backs"]:
                     try:
                         p.unlink()
                     except Exception:
                         pass
-                # 같은 파일명도 혹시 있으면 삭제
                 if original_path.exists():
                     try:
                         original_path.unlink()
@@ -1131,15 +1026,10 @@ def upload_pl_back_data():
                     except Exception:
                         pass
 
-        # ✅ (2) 연/월 파싱 실패 fallback: 기존처럼 report_path 기준으로 confirm
         else:
             if report_path.exists() and not force:
                 return jsonify(
-                    {
-                        "status": "ok",
-                        "need_confirm": True,
-                        "message": "이미 해당 연도와 월에 해당하는 데이터가 있습니다. 다시 저장할까요?",
-                    }
+                    {"status": "ok", "need_confirm": True, "message": "이미 해당 연도와 월에 해당하는 데이터가 있습니다. 다시 저장할까요?"}
                 )
             if force:
                 if original_path.exists():
@@ -1153,10 +1043,8 @@ def upload_pl_back_data():
                     except Exception:
                         pass
 
-        # back_data 저장
         f.save(str(original_path))
 
-        # 통합 리포트 재생성
         try:
             df = generate_pl_report_df(back_data_file=str(original_path))
         except TypeError:
@@ -1165,12 +1053,7 @@ def upload_pl_back_data():
         df.to_excel(report_path, sheet_name="보고서", index=False)
 
         return jsonify(
-            {
-                "status": "ok",
-                "overwritten": bool(force),
-                "back_data_file": str(original_path),
-                "report_file": str(report_path),
-            }
+            {"status": "ok", "overwritten": bool(force), "back_data_file": str(original_path), "report_file": str(report_path)}
         )
 
     except Exception as e:
@@ -1313,7 +1196,7 @@ def get_pl_report():
 # =====================================================
 _topic4_state = {
     "running": False,
-    "step": "idle",  # idle | update_excel | train_prophet | done | failed
+    "step": "idle",
     "started_at": None,
     "finished_at": None,
     "ok": None,
@@ -1448,7 +1331,6 @@ def api_closing_forecast():
 # (선택) 서버 시작 시 DB 연결 테스트
 # =====================================================
 def test_db_connection():
-    # ✅ 데모 모드면 DB 테스트 스킵
     if not USE_DB_AUTH:
         print("[DB TEST] 데모 모드(USE_DB_AUTH=False) → DB 연결 테스트 스킵")
         return
