@@ -8,8 +8,8 @@ function LoginPage({ onLoginSuccess }) {
   const [isRightPanelActive, setIsRightPanelActive] = useState(false);
 
   // 기존 내부 메시지 (폼 아래 영역)
-const [, setError] = useState("");
-const [, setMessage] = useState("");
+  const [, setError] = useState("");
+  const [, setMessage] = useState("");
 
   // 상단 토스트(공통 상태 표시 – 성공 / 실패)
   const [toast, setToast] = useState("");
@@ -99,8 +99,7 @@ const [, setMessage] = useState("");
         }, 3000);
       } else {
         // 로그인 실패 – 빨간색
-        const msg =
-          data.message || "아이디 또는 비밀번호가 올바르지 않습니다.";
+        const msg = data.message || "아이디 또는 비밀번호가 올바르지 않습니다.";
         showToast(msg, "error");
         setError(msg);
         setMessage("");
@@ -188,8 +187,7 @@ const [, setMessage] = useState("");
 
       if (data.success) {
         // 비번 찾기 성공 – 초록색
-        const msg =
-          data.message || "비밀번호 재설정 정보를 전송했습니다.";
+        const msg = data.message || "비밀번호 재설정 정보를 전송했습니다.";
         showToast(msg, "success");
         setMessage(msg);
         setError("");
@@ -283,7 +281,6 @@ const [, setMessage] = useState("");
         <p>이상치·누락 탐지, 변동 분석을 한 화면에서 확인하세요.</p>
       </div>
 
-
       <div className="auth-frame">
         <div
           className={`container ${
@@ -362,7 +359,6 @@ const [, setMessage] = useState("");
                     fontSize: 12,
                     cursor: "pointer",
                     textDecoration: "underline",
-                    color: "#4b5563",
                   }}
                 >
                   비밀번호 찾기

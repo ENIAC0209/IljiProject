@@ -219,7 +219,14 @@ def _summarize_reason(
     mom_change_pct=None,
     lookback3_has_value: Optional[bool] = None,
     lookback12_has_value: Optional[bool] = None,
+    *,
+    zscore_12=None,
+    dev_3m=None,
+    iso_score=None,
+    lof_score=None,
+    corr_score=None,
 ) -> str:
+
     # -------------------------
     # 0) 공통 유틸
     # -------------------------
@@ -327,20 +334,29 @@ def _summarize_reason(
     # -------------------------
     # 2) 케이스별 "고정 포맷"으로 출력 (통일성 핵심)
     # -------------------------
-    # (A) 누락: 유효값 룰만 깔끔히 + (결측/0값 태그가 있으면 같이)
+       # (A) 누락: 유효값 룰만 깔끔히 + (결측/0값 태그가 있으면 같이)
     if display_issue_type == "누락":
-        if lookback3_has_value is True:
-            core = f"누락 · 유효값(3M:{_ox(True)})"
-        elif lookback3_has_value is False:
-            core = f"누락 · 유효값(3M:{_ox(False)}, 12M:{_ox(lookback12_has_value)})"
-        else:
-            core = "누락 · 유효값(3M:?)"
+        def _yn(v):
+            if v is True:
+                return "있음"
+            if v is False:
+                return "없음"
+            return "확인필요"
 
-        # 누락 원인이 0인지 결측인지 정도는 같이 보여주면 훨씬 납득 쉬움
+        if lookback3_has_value is True:
+            core = "누락 · 유효값 존재(이전 3개월 중)"
+        elif lookback3_has_value is False:
+            # 3개월 유효값 없을 때만 12개월 표기
+            core = f"누락 · 유효값 존재(이전 3개월 중): {_yn(False)} · 유효값 존재(이전 12개월 중): {_yn(lookback12_has_value)}"
+        else:
+            core = "누락 · 유효값 존재(이전 3개월 중): 확인필요"
+
+        # 누락 원인이 0인지 결측인지 같이 표기
         miss_tags = [t for t in norm_tags if t in ("결측", "0값")]
         if miss_tags:
             core += f" · 원인:{'/'.join(miss_tags)}"
         return core
+
 
     # (B) 이상/기타: "전월대비" + "태그(원인들)" + (없으면 reason_kor 한 줄 요약)
     parts = []
@@ -350,8 +366,64 @@ def _summarize_reason(
 
     # 누락용 태그(결측/0값)는 이상 케이스에서는 보통 노이즈라 제외 (원하면 유지 가능)
     show_tags = [t for t in norm_tags if t not in ("결측", "0값")]
-    if show_tags:
-        parts.append("원인 " + "/".join(show_tags))
+
+    # -------------------------
+    # ✅ 2-B) 태그별 영향도 점수 계산 → 큰 순서대로 정렬
+    # -------------------------
+    def _safe_abs(x):
+        try:
+            if x is None or pd.isna(x):
+                return 0.0
+            return abs(float(x))
+        except Exception:
+            return 0.0
+
+    tag_score = {t: 0.0 for t in show_tags}
+
+    # 급증/급감: 전월대비 % 절대값이 클수록 영향 큼
+    mom_abs = _safe_abs(mom_change_pct)
+    if "급증" in tag_score:
+        tag_score["급증"] = max(tag_score["급증"], mom_abs)
+    if "급감" in tag_score:
+        tag_score["급감"] = max(tag_score["급감"], mom_abs)
+
+    # zscore: abs(zscore_12)
+    zs = _safe_abs(zscore_12)
+    if "zscore" in tag_score:
+        tag_score["zscore"] = max(tag_score["zscore"], zs)
+
+    # 패턴이탈: dev_3m (네 파이프라인에서 이미 있음)
+    dv = _safe_abs(dev_3m)
+    if "패턴이탈" in tag_score:
+        tag_score["패턴이탈"] = max(tag_score["패턴이탈"], dv)
+
+    # IF / LOF: 점수 절대값(모델별 스케일 다르면 나중에 보정 가능)
+    ifs = _safe_abs(iso_score)
+    lofs = _safe_abs(lof_score)
+    if "IF" in tag_score:
+        tag_score["IF"] = max(tag_score["IF"], ifs)
+    if "LOF" in tag_score:
+        tag_score["LOF"] = max(tag_score["LOF"], lofs)
+
+    # 상관이상: corr_score가 있으면 반영, 없으면 "있다" 수준으로 약한 점수
+    cs = _safe_abs(corr_score)
+    if "상관이상" in tag_score:
+        tag_score["상관이상"] = max(tag_score["상관이상"], cs if cs > 0 else 0.5)
+
+    # 반복/시즌/이벤트: 기본적으로 영향도 낮게(태그만 있으면 맨 뒤로 밀림)
+    for low in ("반복", "시즌", "이벤트"):
+        if low in tag_score and tag_score[low] == 0.0:
+            tag_score[low] = 0.1
+
+    # ✅ 점수 큰 순 → 동점이면 기존 ORDER 순서로 안정 정렬
+    order_index = {k: i for i, k in enumerate(ORDER)}
+    show_tags_sorted = sorted(
+        show_tags,
+        key=lambda t: (-tag_score.get(t, 0.0), order_index.get(t, 999)),
+    )
+
+    if show_tags_sorted:
+        parts.append("원인 " + "/".join(show_tags_sorted))
 
     # 태그도 전월대비도 없으면, reason_kor 첫 문장 느낌만 짧게(너무 길면 컷)
     if not parts and rk:
@@ -1138,7 +1210,15 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
         lb3 = row.get("lookback3_has_value")
         lb12 = row.get("lookback12_has_value")
 
-        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type, mom_pct, lb3, lb12)
+        reason_summary = _summarize_reason(
+        reason_kor, reason_tags, display_issue_type,
+        mom_pct, lb3, lb12,
+        zscore_12=row.get("zscore_12"),
+        dev_3m=row.get("dev_3m"),
+        iso_score=row.get("iso_score"),
+        lof_score=row.get("lof_score"),
+        corr_score=row.get("corr_score") or row.get("corr_anom_score"),
+    )
 
         issues.append(
             {
@@ -1328,7 +1408,15 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
         lb3 = row.get("lookback3_has_value")
         lb12 = row.get("lookback12_has_value")
 
-        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type, mom_pct, lb3, lb12)
+        reason_summary = _summarize_reason(
+    reason_kor, reason_tags, display_issue_type,
+    mom_pct, lb3, lb12,
+    zscore_12=row.get("zscore_12"),
+    dev_3m=row.get("dev_3m"),
+    iso_score=row.get("iso_score"),
+    lof_score=row.get("lof_score"),
+    corr_score=row.get("corr_score") or row.get("corr_anom_score"),
+)
 
         issues.append(
             {
