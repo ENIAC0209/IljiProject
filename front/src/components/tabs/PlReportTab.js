@@ -1,8 +1,8 @@
 // front/coProject-main/sapcoproject/src/components/tabs/PlReportTab.js
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx"; // ✅ 엑셀 Export용 추가
-import PlReportGraphTab from "./PlReportGraphTab"; // 그래프 탭 컴포넌트
+import PlReportGraphTab from "./PlReportGraphTab";
 
 const CONDITION_KEYS = [
   "전체",
@@ -44,12 +44,7 @@ const KPI_ITEMS = [
 ];
 
 // 🔹 요약 카드에서 '핵심 KPI'로 상단 줄에 강조해서 보여줄 항목
-const KPI_PRIMARY_ITEMS = new Set([
-  "매출액",
-  "매출총이익",
-  "영업이익",
-  "당기순이익",
-]);
+const KPI_PRIMARY_ITEMS = new Set(["매출액", "매출총이익", "영업이익", "당기순이익"]);
 
 // 🔹 각 KPI 위(=항목 바로 아래)에 보여줄 계산식/설명 텍스트
 const KPI_FORMULAS = {
@@ -65,12 +60,7 @@ const KPI_FORMULAS = {
 };
 
 // 🔹 초록색(국내/수출 매출 및 매출원가: 행 하이라이트용)
-const HIGHLIGHT_GREEN_ITEMS = new Set([
-  "국내매출액",
-  "수출매출액",
-  "매출원가",
-  "매출원가(기타)",
-]);
+const HIGHLIGHT_GREEN_ITEMS = new Set(["국내매출액", "수출매출액", "매출원가", "매출원가(기타)"]);
 
 /* ============================
  *  코드 → 내역 매핑 테이블들
@@ -334,7 +324,7 @@ const SD_DOC_TYPE_LABELS = {
   DMRP: "표준 오더",
   DMRR: "표준 오더",
   DR: "차변 메모 요청",
-  DR1: "서비스 차변메모 요청",
+  DR1: "서비스 차변메모요청",
   DZL: "납품오더유형",
   ED: "외부대행업체출고",
   EDKO: "외부대행업체수정",
@@ -440,8 +430,8 @@ const SD_DOC_TYPE_LABELS = {
   RTTC: "고객에게 SPE 반품",
   RTTR: "SPE 반품 정비",
   RX2: "ARM 외부 수리 오더",
-  RXE: "XLO 이전 반품",
-  RXI: "XLO 내부 반품",
+  RXE: "XLO 이전 오더",
+  RXI: "XLO 내부 오더",
   RZ: "반품 납품 일정 계약",
   SCR: "서비스의대변메모요청",
   SD: "차후 무상 납품",
@@ -508,54 +498,104 @@ const LABEL_MAPS = {
   레코드유형: RECORD_TYPE_LABELS,
 };
 
-function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
+function PlReportTab({
+  selectedYm,
+  plDetailTab = "basic",
+  setPlDetailTab,
+  cardStyle = {
+    backgroundColor: "#ffffff",
+    borderRadius: 0,
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 0 0 rgba(0,0,0,0.02)",
+    padding: 14,
+  },
+}) {
   const [rows, setRows] = useState([]);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+
   const [selectedCond, setSelectedCond] = useState("전체");
 
-  // 🔹 연/월 선택용 상태
-  const [periods, setPeriods] = useState([]); // [{year, month, label, ...}]
-  const [selectedYear, setSelectedYear] = useState(null);
-  const [selectedMonth, setSelectedMonth] = useState(null);
-
-  // 🔹 표 / 그래프 보기 모드
+  // ✅ 표/그래프 보기 모드
   const [viewMode, setViewMode] = useState("table"); // "table" | "graph"
 
-  // StrictMode 중복 fetch 방지
-  const didInitRef = useRef(false);
-
-  // 실제 표가 들어 있는 스크롤 컨테이너
   const mainScrollRef = useRef(null);
 
-  // -----------------------------
-  // 1) 기간 목록 조회
-  // -----------------------------
-  const fetchPeriods = async () => {
-    try {
-      const res = await fetch("/api/pl-report/periods");
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-      const data = await res.json();
-      const list = data.periods || [];
+  // =========================
+  // ✅ Variance 스타일 계열(각진 카드)
+  // =========================
+  const panelStyle = {
+    ...cardStyle,
+    borderRadius: 0,
+    border: "1px solid #E5E7EB",
+    boxShadow: "0 4px 8px rgba(15,23,42,0.03)",
+  };
 
-      setPeriods(list);
+  const kpiPrimaryCardStyle = {
+    ...panelStyle,
+    padding: 12,
+    backgroundColor: "#FFFBEB",
+    border: "1px solid #FACC15",
+  };
 
-      if (list.length > 0) {
-        const last = list[list.length - 1]; // 가장 최신 연/월
-        setSelectedYear(last.year);
-        setSelectedMonth(last.month);
-      }
-    } catch (err) {
-      console.error("PL report periods fetch error:", err);
-      // 기간 조회 실패 시에도 전체 로직이 멈추지 않도록, 에러 메시지만 보관
-      setError("기간 목록을 불러오는 중 오류가 발생했습니다.");
-    }
+  const kpiCardStyle = {
+    ...panelStyle,
+    padding: 12,
+    backgroundColor: "#ffffff",
+  };
+
+  // =========================
+  // ✅ 버튼 스타일 (각진)
+  // =========================
+  const btnBase = {
+    height: 28,
+    padding: "0 10px",
+    borderRadius: 8,
+    border: "1px solid #D1D5DB",
+    backgroundColor: "#ffffff",
+    color: "#111827",
+    fontSize: 12,
+    fontWeight: 700,
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+    boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
+  };
+
+  const btnActive = {
+    border: "1px solid #1D4ED8",
+    backgroundColor: "#2563EB",
+    color: "#ffffff",
+    boxShadow: "0 2px 6px rgba(37,99,235,0.25)",
+  };
+
+  const exportBtnStyle = {
+    ...btnBase,
+    padding: "0 12px",
+    fontWeight: 800,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
   };
 
   // -----------------------------
-  // 2) 선택된 연/월에 해당하는 리포트 조회
+  // ✅ selectedYm("YYYY-MM") → year/month 파싱
+  // -----------------------------
+  const { selectedYear, selectedMonth, selectedYmLabel } = useMemo(() => {
+    if (!selectedYm || typeof selectedYm !== "string") {
+      return { selectedYear: null, selectedMonth: null, selectedYmLabel: "-" };
+    }
+    const parts = selectedYm.split("-");
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    if (!y || !m) {
+      return { selectedYear: null, selectedMonth: null, selectedYmLabel: "-" };
+    }
+    const label = `${y}-${String(m).padStart(2, "0")}`;
+    return { selectedYear: y, selectedMonth: m, selectedYmLabel: label };
+  }, [selectedYm]);
+
+  // -----------------------------
+  // 1) 선택된 연/월에 해당하는 리포트 조회
   // -----------------------------
   const fetchData = async (year, month) => {
     if (!year || !month) return;
@@ -572,9 +612,7 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
       const res = await fetch(`/api/pl-report?${params}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        const msg =
-          data.error ||
-          `PL Report 조회 중 오류가 발생했습니다. (HTTP ${res.status})`;
+        const msg = data.error || `PL Report 조회 중 오류가 발생했습니다. (HTTP ${res.status})`;
         throw new Error(msg);
       }
       const data = await res.json();
@@ -588,24 +626,21 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
     }
   };
 
-  // 최초 1회: 기간 목록 조회
-  useEffect(() => {
-    if (didInitRef.current) return;
-    didInitRef.current = true;
-    fetchPeriods();
-  }, []);
-
-  // 연/월이 설정될 때마다 해당 월 리포트 조회
   useEffect(() => {
     if (!selectedYear || !selectedMonth) return;
     fetchData(selectedYear, selectedMonth);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear, selectedMonth]);
 
+  const formatNumber = (v) => {
+    if (v === null || v === undefined || v === "") return "-";
+    const num = Number(v);
+    if (Number.isNaN(num)) return String(v);
+    return num.toLocaleString("ko-KR");
+  };
+
   if (loading) return <p>불러오는 중...</p>;
-  if (error && rows.length === 0) {
-    return <p style={{ color: "red" }}>{error}</p>;
-  }
+  if (error && rows.length === 0) return <p style={{ color: "red" }}>{error}</p>;
   if (rows.length === 0) return <p>데이터가 없습니다.</p>;
 
   // ✅ 선택된 조건에 따라 컬럼 필터링 + "조건_전체"를 항목 바로 뒤로 이동
@@ -614,161 +649,72 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
     const base = ["번호", "항목"];
     const others = cols.filter((c) => !base.includes(c));
 
-    // 전체 조건일 때는 기존 로직 그대로
     if (selectedCond === "전체") {
-      const totalCols = others.filter(
-        (c) => c === "전체" || c.startsWith("전체_")
-      );
+      const totalCols = others.filter((c) => c === "전체" || c.startsWith("전체_"));
       return [...base, ...totalCols];
     }
 
     const prefix = selectedCond + "_";
     const filtered = others.filter((c) => c.startsWith(prefix));
 
-    // 🔹 이 조건의 합계 컬럼 이름 (예: 플랜트_전체)
     const totalCol = `${selectedCond}_전체`;
-
     const hasTotal = filtered.includes(totalCol);
     const withoutTotal = filtered.filter((c) => c !== totalCol);
 
-    // "번호, 항목, (조건_전체), 나머지 코드들..." 순서
-    const orderedForCond = hasTotal
-      ? [totalCol, ...withoutTotal]
-      : withoutTotal;
-
+    const orderedForCond = hasTotal ? [totalCol, ...withoutTotal] : withoutTotal;
     return [...base, ...orderedForCond];
   })();
 
-  // 대표 경영지표 요약에 쓸 컬럼 이름 (전체 / 조건_전체)
-  const summaryColName =
-    selectedCond === "전체" ? "전체" : `${selectedCond}_전체`;
+  const summaryColName = selectedCond === "전체" ? "전체" : `${selectedCond}_전체`;
 
-  // 숫자 포맷 함수
-  const formatNumber = (v) => {
-    if (v === null || v === undefined || v === "") return "-";
-    const num = Number(v);
-    if (Number.isNaN(num)) return "-";
-    return num.toLocaleString("ko-KR");
-  };
-
-  // 요약 카드용 데이터
   const kpiSummary = KPI_ITEMS.map((name) => {
-    const row =
-      rows.find((r) => (r["항목"] || "").trim() === name) || null;
+    const row = rows.find((r) => (r["항목"] || "").trim() === name) || null;
     const raw =
-      row &&
-      summaryColName &&
-      Object.prototype.hasOwnProperty.call(row, summaryColName)
+      row && summaryColName && Object.prototype.hasOwnProperty.call(row, summaryColName)
         ? row[summaryColName]
         : null;
 
-    return {
-      name,
-      value: raw,
-      valueFormatted: formatNumber(raw),
-    };
+    return { name, value: raw, valueFormatted: formatNumber(raw) };
   });
 
-  // 상단 핵심 KPI / 하단 기타 KPI 분리
-  const primarySummary = kpiSummary.filter((item) =>
-    KPI_PRIMARY_ITEMS.has(item.name)
-  );
-  const secondarySummary = kpiSummary.filter(
-    (item) => !KPI_PRIMARY_ITEMS.has(item.name)
-  );
+  const primarySummary = kpiSummary.filter((item) => KPI_PRIMARY_ITEMS.has(item.name));
+  const secondarySummary = kpiSummary.filter((item) => !KPI_PRIMARY_ITEMS.has(item.name));
 
-  // 컬럼 표시 이름: 조건명_코드 → 내역(없으면 코드)
   const getDisplayColName = (col) => {
     if (col === "번호" || col === "항목" || col === "전체") return col;
 
     const idx = col.indexOf("_");
     if (idx === -1) return col;
 
-    const cond = col.slice(0, idx); // 예: "플랜트"
-    const code = col.slice(idx + 1); // 예: "1010"
+    const cond = col.slice(0, idx);
+    const code = col.slice(idx + 1);
 
     const map = LABEL_MAPS[cond];
-    if (map && Object.prototype.hasOwnProperty.call(map, code) && map[code]) {
-      return map[code]; // 내역
-    }
+    if (map && Object.prototype.hasOwnProperty.call(map, code) && map[code]) return map[code];
 
-    // 매핑 없으면 코드 그대로
     return code;
   };
 
-  // 🔹 항목(행 제목)에 따라 배경색 리턴
   const getRowBackgroundColor = (itemName) => {
-    const key = (itemName || "").trim(); // 공백 제거해서 비교
-
-    if (HIGHLIGHT_YELLOW_ITEMS.has(key)) {
-      return "#FFF9C4"; // 연한 노랑
-    }
-    if (HIGHLIGHT_GREEN_ITEMS.has(key)) {
-      return "#E8F5E9"; // 연한 초록
-    }
+    const key = (itemName || "").trim();
+    if (HIGHLIGHT_YELLOW_ITEMS.has(key)) return "#FFF9C4";
+    if (HIGHLIGHT_GREEN_ITEMS.has(key)) return "#E8F5E9";
     return "transparent";
   };
 
-  // 표 전체 최소 너비 (컬럼 수에 비례)
-  const tableMinWidth = Math.max(orderedColumns.length * 110, 600);
+  const tableMinWidth = Math.max(orderedColumns.length * 140, 0);
 
-  // 연/월 셀렉트용 옵션
-  const yearOptions = Array.from(
-    new Set(periods.map((p) => p.year))
-  ).sort((a, b) => a - b);
-
-  const monthOptions = periods
-    .filter((p) => p.year === selectedYear)
-    .sort((a, b) => a.month - b.month);
-
-  const handleYearChange = (e) => {
-    const value = e.target.value;
-    if (!value) {
-      setSelectedYear(null);
-      setSelectedMonth(null);
-      return;
-    }
-    const year = Number(value);
-    setSelectedYear(year);
-
-    const monthsForYear = periods
-      .filter((p) => p.year === year)
-      .sort((a, b) => a.month - b.month);
-    if (monthsForYear.length > 0) {
-      // 같은 연도 내에서 가장 최근 월로 맞춰줌
-      setSelectedMonth(monthsForYear[monthsForYear.length - 1].month);
-    } else {
-      setSelectedMonth(null);
-    }
-  };
-
-  const handleMonthChange = (e) => {
-    const value = e.target.value;
-    if (!value) {
-      setSelectedMonth(null);
-      return;
-    }
-    setSelectedMonth(Number(value));
-  };
-
-  // 🔹 EXPORT → 엑셀 다운로드 함수
   const exportToExcel = () => {
     if (!rows || rows.length === 0) return;
 
-    // 1) 헤더 + 데이터 AOA 생성
     const header = orderedColumns.map((col) => getDisplayColName(col));
     const data = rows.map((row) =>
-      orderedColumns.map((col) =>
-        row[col] === null || row[col] === undefined ? "" : row[col]
-      )
+      orderedColumns.map((col) => (row[col] === null || row[col] === undefined ? "" : row[col]))
     );
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
-
-    // 2) 스타일 지정
     const range = XLSX.utils.decode_range(ws["!ref"]);
 
-    // 헤더 스타일 (1행)
     for (let C = range.s.c; C <= range.e.c; C += 1) {
       const cellRef = XLSX.utils.encode_cell({ r: 0, c: C });
       const cell = ws[cellRef] || {};
@@ -777,9 +723,7 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
         alignment: {
           vertical: "center",
           horizontal:
-            orderedColumns[C] === "번호" || orderedColumns[C] === "항목"
-              ? "left"
-              : "right",
+            orderedColumns[C] === "번호" || orderedColumns[C] === "항목" ? "left" : "right",
         },
         fill: { fgColor: { rgb: "FFF3F4F6" } },
         border: {
@@ -792,24 +736,21 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
       ws[cellRef] = cell;
     }
 
-    // 데이터 행 스타일 (행 배경색 반영)
     for (let R = range.s.r + 1; R <= range.e.r; R += 1) {
-      const dataRowIndex = R - 1; // rows 인덱스
+      const dataRowIndex = R - 1;
       const itemName = rows[dataRowIndex]["항목"];
       const bg = getRowBackgroundColor(itemName);
 
       let fillColor = null;
-      if (bg === "#FFF9C4") fillColor = "FFFFF9C4"; // 노랑
-      if (bg === "#E8F5E9") fillColor = "FFE8F5E9"; // 연초록
+      if (bg === "#FFF9C4") fillColor = "FFFFF9C4";
+      if (bg === "#E8F5E9") fillColor = "FFE8F5E9";
 
       for (let C = range.s.c; C <= range.e.c; C += 1) {
         const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
         const cell = ws[cellRef] || { t: "s", v: "" };
 
         const align =
-          orderedColumns[C] === "번호" || orderedColumns[C] === "항목"
-            ? "left"
-            : "right";
+          orderedColumns[C] === "번호" || orderedColumns[C] === "항목" ? "left" : "right";
 
         cell.s = {
           alignment: { vertical: "center", horizontal: align },
@@ -819,34 +760,23 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
             left: { style: "thin", color: { rgb: "FFF3F4F6" } },
             right: { style: "thin", color: { rgb: "FFF3F4F6" } },
           },
-          ...(fillColor
-            ? {
-                fill: {
-                  fgColor: { rgb: fillColor },
-                },
-              }
-            : {}),
+          ...(fillColor ? { fill: { fgColor: { rgb: fillColor } } } : {}),
         };
 
         ws[cellRef] = cell;
       }
     }
 
-    // 3) 컬럼 너비 대략 조정
     ws["!cols"] = orderedColumns.map((col) => {
       if (col === "번호") return { wch: 6 };
       if (col === "항목") return { wch: 26 };
       return { wch: 18 };
     });
 
-    // 4) 워크북 생성 및 파일 저장
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "PL Report");
 
-    const ym =
-      selectedYear && selectedMonth
-        ? `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`
-        : "unknown";
+    const ym = selectedYmLabel && selectedYmLabel !== "-" ? selectedYmLabel : "unknown";
     const condLabel = selectedCond || "전체";
     const filename = `PL_Report_${ym}_${condLabel}.xlsx`;
 
@@ -865,256 +795,117 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
         gap: "12px",
       }}
     >
-      {/* 제목 + 연도/월 선택 + 조건 선택 버튼 + EXPORT */}
+      {/* ✅ 제목 + EXPORT + 표/그래프 버튼 + 조건버튼을 “한 줄”로 고정 */}
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
           alignItems: "center",
-          gap: "12px",
+          gap: 12,
+          width: "100%",
+          flexWrap: "nowrap",
+          minWidth: 0,
         }}
       >
-        {/* 왼쪽: 제목 + 연/월 드롭다운 + 표/그래프 토글 */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          <h2 style={{ margin: 0 }}>P&amp;L Report</h2>
+        {/* 좌측: 제목 + EXPORT + 표/그래프 */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <h2 style={{ margin: 0, lineHeight: 1.2 }}>P&amp;L Report</h2>
 
-          {/* 연도 선택 */}
-          <select
-            value={selectedYear || ""}
-            onChange={handleYearChange}
-            style={{
-              padding: "4px 8px",
-              borderRadius: 8,
-              border: "1px solid #d4d4d4",
-              fontSize: 12,
-            }}
-          >
-            <option value="">연도 선택</option>
-            {yearOptions.map((y) => (
-              <option key={y} value={y}>
-                {y}년
-              </option>
-            ))}
-          </select>
-
-          {/* 월 선택 */}
-          <select
-            value={selectedMonth || ""}
-            onChange={handleMonthChange}
-            style={{
-              padding: "4px 8px",
-              borderRadius: 8,
-              border: "1px solid #d4d4d4",
-              fontSize: 12,
-            }}
-            disabled={!selectedYear || monthOptions.length === 0}
-          >
-            <option value="">월 선택</option>
-            {monthOptions.map((p) => (
-              <option key={p.month} value={p.month}>
-                {String(p.month).padStart(2, "0")}월
-              </option>
-            ))}
-          </select>
-
-          {/* 🔹 표 / 그래프 토글 버튼 */}
-          <div
-            style={{
-              marginLeft: 4,
-              display: "inline-flex",
-              borderRadius: 999,
-              border: "1px solid #d4d4d4",
-              overflow: "hidden",
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => setViewMode("table")}
-              style={{
-                padding: "4px 10px",
-                fontSize: 11,
-                border: "none",
-                cursor: "pointer",
-                backgroundColor:
-                  viewMode === "table" ? "#111827" : "#ffffff",
-                color: viewMode === "table" ? "#ffffff" : "#4b5563",
-                fontWeight: viewMode === "table" ? 600 : 500,
-              }}
-            >
-              표 보기
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("graph")}
-              style={{
-                padding: "4px 10px",
-                fontSize: 11,
-                borderLeft: "1px solid #d4d4d4",
-                cursor: "pointer",
-                backgroundColor:
-                  viewMode === "graph" ? "#111827" : "#ffffff",
-                color: viewMode === "graph" ? "#ffffff" : "#4b5563",
-                fontWeight: viewMode === "graph" ? 600 : 500,
-              }}
-            >
-              그래프 보기
-            </button>
-          </div>
-        </div>
-
-        {/* 오른쪽: EXPORT 버튼 + 조건 버튼들 */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 6,
-            alignItems: "flex-end",
-          }}
-        >
           <button
             type="button"
             onClick={exportToExcel}
-            style={{
-              padding: "6px 14px",
-              borderRadius: 999,
-              border: "1px solid #2563eb",
-              backgroundColor: "#2563eb",
-              color: "#ffffff",
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: "pointer",
-              boxShadow: "0 4px 10px rgba(37,99,235,0.4)",
-            }}
+            style={exportBtnStyle}
+            title="현재 화면(선택 조건/컬럼 기준)으로 엑셀 다운로드"
           >
+            <span style={{ fontSize: 12, lineHeight: 1 }}>⬇</span>
             EXPORT
           </button>
 
+          {/* ✅ 표/그래프 보기 토글 */}
+          <button
+            type="button"
+            onClick={() => setViewMode("table")}
+            style={{ ...btnBase, ...(viewMode === "table" ? btnActive : null) }}
+          >
+            표
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("graph")}
+            style={{ ...btnBase, ...(viewMode === "graph" ? btnActive : null) }}
+          >
+            그래프
+          </button>
+        </div>
+
+        {/* 우측: 조건 버튼 (한 줄, 넘치면 가로 스크롤) */}
+        <div
+          style={{
+            marginLeft: "auto",
+            minWidth: 0,
+            flex: 1,
+            display: "flex",
+            justifyContent: "flex-end",
+          }}
+        >
           <div
             style={{
               display: "flex",
-              gap: "8px",
-              flexWrap: "wrap",
-              justifyContent: "flex-end",
+              gap: 8,
+              flexWrap: "nowrap",
+              overflowX: "auto",
+              overflowY: "hidden",
+              paddingBottom: 2,
+              scrollbarWidth: "thin",
+              WebkitOverflowScrolling: "touch",
             }}
           >
-            {CONDITION_KEYS.map((cond) => (
-              <button
-                key={cond}
-                type="button"
-                onClick={() => setSelectedCond(cond)}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: "16px",
-                  border:
-                    selectedCond === cond
-                      ? "1px solid #2563eb"
-                      : "1px solid #d4d4d4",
-                  backgroundColor:
-                    selectedCond === cond ? "#2563eb" : "#ffffff",
-                  color: selectedCond === cond ? "#ffffff" : "#111827",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {cond}
-              </button>
-            ))}
+            {CONDITION_KEYS.map((cond) => {
+              const active = selectedCond === cond;
+              return (
+                <button
+                  key={cond}
+                  type="button"
+                  onClick={() => setSelectedCond(cond)}
+                  style={{ ...btnBase, ...(active ? btnActive : null) }}
+                >
+                  {cond}
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
 
-      {/* ▼▼ viewMode 에 따라 분기 ▼▼ */}
+      {/* ✅ 변경: 그래프 보기 모드에서는 이 요약(노란 카드) 영역이 뜨면 안 됨 */}
       {viewMode === "table" && (
         <>
           {/* 대표 경영지표 요약 카드 영역 */}
           <div
             style={{
-              background: "#f9fafb",
-              borderRadius: 18,
-              border: "1px solid #e5e7eb",
-              boxShadow: "0 16px 32px rgba(15,23,42,0.06)",
-              padding: "14px 16px",
-              boxSizing: "border-box",
-              width: "100%",
+              ...panelStyle,
+              padding: 14,
               display: "flex",
               flexDirection: "column",
-              gap: 10,
+              gap: 12,
             }}
           >
-            <div
-              style={{
-                fontSize: 11,
-                color: "#9ca3af",
-                marginBottom: 2,
-                paddingLeft: 2,
-              }}
-            >
+            <div style={{ fontSize: 11, color: "#6b7280" }}>
               대표 경영지표 요약 (선택된 조건:&nbsp;
-              <span style={{ fontWeight: 600, color: "#4b5563" }}>
+              <span style={{ fontWeight: 700, color: "#111827" }}>
                 {selectedCond === "전체" ? "전체" : `${selectedCond} - 전체`}
               </span>
-              )
-              {selectedYear && selectedMonth && (
-                <>
-                  &nbsp;| 조회 기간:&nbsp;
-                  <span style={{ fontWeight: 600, color: "#4b5563" }}>
-                    {selectedYear}년 {String(selectedMonth).padStart(2, "0")}월
-                  </span>
-                </>
-              )}
+              )&nbsp;| 조회 기간:&nbsp;
+              <span style={{ fontWeight: 700, color: "#111827" }}>{selectedYmLabel}</span>
             </div>
 
             {/* 1줄차: 핵심 KPI */}
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                flexWrap: "nowrap",
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
               {primarySummary.map((item) => {
                 const formula = KPI_FORMULAS[item.name] || "";
-
                 return (
-                  <div
-                    key={item.name}
-                    style={{
-                      flex: "1 1 0",
-                      minWidth: 0,
-                      padding: "10px 14px",
-                      borderRadius: 16,
-                      backgroundColor: "#FFFBEB",
-                      border: "1px solid #FACC15",
-                      boxShadow: "0 8px 18px rgba(15,23,42,0.06)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                        gap: 8,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 700,
-                          color: "#374151",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                  <div key={item.name} style={kpiPrimaryCardStyle}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}>
                         {item.name}
                       </div>
                       <div
@@ -1137,6 +928,7 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
                     {formula && (
                       <div
                         style={{
+                          marginTop: 6,
                           fontSize: 10,
                           color: "#6b7280",
                           whiteSpace: "nowrap",
@@ -1154,54 +946,19 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
             </div>
 
             {/* 2줄차: 나머지 KPI */}
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                flexWrap: "nowrap",
-              }}
-            >
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
               {secondarySummary.map((item) => {
                 const formula = KPI_FORMULAS[item.name] || "";
-
                 return (
-                  <div
-                    key={item.name}
-                    style={{
-                      flex: "1 1 0",
-                      minWidth: 0,
-                      padding: "8px 12px",
-                      borderRadius: 14,
-                      backgroundColor: "#ffffff",
-                      border: "1px solid #e5e7eb",
-                      boxShadow: "0 8px 18px rgba(15,23,42,0.06)",
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 4,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                        gap: 6,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 600,
-                          color: "#4b5563",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
+                  <div key={item.name} style={kpiCardStyle}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#4b5563", whiteSpace: "nowrap" }}>
                         {item.name}
                       </div>
                       <div
                         style={{
                           fontSize: 14,
-                          fontWeight: 700,
+                          fontWeight: 800,
                           color: "#111827",
                           textAlign: "right",
                           maxWidth: "60%",
@@ -1218,6 +975,7 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
                     {formula && (
                       <div
                         style={{
+                          marginTop: 6,
                           fontSize: 10,
                           color: "#9ca3af",
                           whiteSpace: "nowrap",
@@ -1234,104 +992,117 @@ function PlReportTab({ plDetailTab = "basic", setPlDetailTab }) {
               })}
             </div>
           </div>
+        </>
+      )}
 
-          {/* ====== 테이블 카드 ====== */}
+      {/* ====== 테이블 / 그래프 본문 ====== */}
+      {viewMode === "table" ? (
+        <div
+          style={{
+            ...panelStyle,
+            padding: "12px 12px 10px",
+            width: "100%",
+            maxWidth: "100%",
+            overflow: "hidden",
+          }}
+        >
+          {/* ▼▼ 표 전용 스크롤 영역 (세로+가로) ▼▼ */}
           <div
+            ref={mainScrollRef}
             style={{
-              background: "#ffffff",
-              borderRadius: 16,
-              border: "1px solid #e5e7eb",
-              boxShadow: "0 18px 40px rgba(15,23,42,0.06)",
-              padding: "12px 12px 10px",
-              boxSizing: "border-box",
               width: "100%",
               maxWidth: "100%",
-              overflow: "hidden",
+              maxHeight: "68vh",
+              overflowX: "auto",
+              overflowY: "auto",
             }}
           >
-            {/* ▼▼ 표 전용 스크롤 영역 (세로+가로) ▼▼ */}
-            <div
-              ref={mainScrollRef}
+            <table
               style={{
                 width: "100%",
-                maxWidth: "100%",
-                maxHeight: "68vh", // 세로 스크롤
-                overflowX: "auto", // 이 영역 안에서만 가로 스크롤
-                overflowY: "auto",
+                borderCollapse: "collapse",
+                fontSize: "13px",
+                tableLayout: "fixed",
+                minWidth: tableMinWidth,
               }}
             >
-              <table
-                style={{
-                  borderCollapse: "collapse",
-                  fontSize: "13px",
-                  tableLayout: "auto",
-                  whiteSpace: "nowrap",
-                  minWidth: tableMinWidth,
-                }}
-              >
-                <thead>
-                  <tr>
-                    {orderedColumns.map((col) => (
-                      <th
-                        key={col}
-                        style={{
-                          borderBottom: "2px solid #e5e7eb",
-                          padding: "8px 10px",
-                          position: "sticky",
-                          top: 0,
-                          background: "#f9fafb",
-                          textAlign:
-                            col === "번호" || col === "항목"
-                              ? "left"
-                              : "right",
-                          zIndex: 2,
-                        }}
-                      >
-                        {getDisplayColName(col)}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
+              <colgroup>
+                <col style={{ width: 60 }} />
+                <col style={{ width: 260 }} />
+                {orderedColumns.slice(2).map((c) => (
+                  <col key={c} style={{ width: "auto" }} />
+                ))}
+              </colgroup>
 
-                <tbody>
-                  {rows.map((row, idx) => {
-                    const itemName = row["항목"];
-                    const rowBg = getRowBackgroundColor(itemName);
+              <thead>
+                <tr>
+                  {orderedColumns.map((col) => (
+                    <th
+                      key={col}
+                      style={{
+                        borderBottom: "2px solid #e5e7eb",
+                        padding: "8px 10px",
+                        position: "sticky",
+                        top: 0,
+                        background: "#f9fafb",
+                        textAlign: col === "번호" || col === "항목" ? "left" : "right",
+                        zIndex: 2,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={getDisplayColName(col)}
+                    >
+                      {getDisplayColName(col)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
 
-                    return (
-                      <tr key={idx} style={{ backgroundColor: rowBg }}>
-                        {orderedColumns.map((col) => (
+              <tbody>
+                {rows.map((row, idx) => {
+                  const itemName = row["항목"];
+                  const rowBg = getRowBackgroundColor(itemName);
+
+                  return (
+                    <tr key={idx} style={{ backgroundColor: rowBg }}>
+                      {orderedColumns.map((col) => {
+                        const raw = row[col];
+                        const isTextCol = col === "번호" || col === "항목";
+                        const display = isTextCol ? raw ?? "" : formatNumber(raw);
+
+                        return (
                           <td
                             key={col}
                             style={{
                               borderBottom: "1px solid #f3f4f6",
                               padding: "6px 10px",
-                              textAlign:
-                                col === "번호" || col === "항목"
-                                  ? "left"
-                                  : "right",
+                              textAlign: isTextCol ? "left" : "right",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
                             }}
+                            title={String(display ?? "")}
                           >
-                            {row[col]}
+                            {display}
                           </td>
-                        ))}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {/* ▲▲ 표 전용 스크롤 영역 끝 ▲▲ */}
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
-        </>
-      )}
-
-      {viewMode === "graph" && (
+          {/* ▲▲ 표 전용 스크롤 영역 끝 ▲▲ */}
+        </div>
+      ) : (
         <PlReportGraphTab
           rows={rows}
           selectedCond={selectedCond}
           selectedYear={selectedYear}
           selectedMonth={selectedMonth}
+          showCondBar={false}
         />
       )}
     </div>

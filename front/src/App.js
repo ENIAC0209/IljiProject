@@ -107,12 +107,26 @@ function App() {
   const [backFile, setBackFile] = useState(null);
 
   const [tab, setTab] = useState("overview");
+
+  // ✅ 비용 탭용 Month (기존 유지)
   const [selectedMonth, setSelectedMonth] = useState("");
+
+  // ✅ P&L(report_data) 탭용 Month (추가)
+  const [selectedReportYm, setSelectedReportYm] = useState("");
+  const [reportPeriods, setReportPeriods] = useState([]); // [{year, month}] 또는 ["YYYY-MM"]
 
   const [plDimension, setPlDimension] = useState("profitCenter");
   const [plPeriod, setPlPeriod] = useState("all");
   const [plViewMode, setPlViewMode] = useState("table");
   const [plDetailTab, setPlDetailTab] = useState("basic");
+
+  // ✅ "그래프 전용 페이지" 제거했으므로, 기본 탭 진입 시 table 모드만 맞춰줌
+  useEffect(() => {
+    if (tab === "pl-report-basic") setPlViewMode("table");
+  }, [tab]);
+
+  // ✅ P&L 계열 탭 판별 (그래프 전용 페이지 제거)
+  const isPlReportTab = tab === "pl-report-basic" || tab === "pl-report-cause";
 
   // 업로드 input ref
   const costFileInputRef = useRef(null); // 코스트센터 (1~3탭)
@@ -194,9 +208,6 @@ function App() {
           setAnomalyError(null);
           setInitProgress(60);
 
-          const res2 = await fetch(
-            `${API_BASE}/api/cost-center/analyze-default`
-          );
 
           if (!res2.ok) {
             const msg = `analyze-default HTTP ${res2.status}`;
@@ -237,7 +248,9 @@ function App() {
     };
   }, [isLoggedIn]);
 
+  // ==========================
   // P&L 보고서 데이터 (기존 유지: /api/pl-report)
+  // ==========================
   useEffect(() => {
     if (!isLoggedIn) return;
 
@@ -259,6 +272,95 @@ function App() {
 
     fetchPlReport();
   }, [isLoggedIn]);
+
+  // ==========================
+  // ✅ report_data 기준 Month 목록 로드 (추가)
+  //  - 1순위: /api/pl-report/periods (있으면 사용)
+  //  - 2순위: 기존 plReportData에서 year/month 추출 (fallback)
+  // ==========================
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let mounted = true;
+
+    const normalizeYm = (y, m) =>
+      `${String(y)}-${String(m).padStart(2, "0")}`;
+
+    async function loadPeriods() {
+      // 1) 서버 endpoint가 있으면 사용
+      try {
+        const res = await fetch(`${API_BASE}/api/pl-report/periods`);
+        if (res.ok) {
+          const json = await res.json().catch(() => ({}));
+          const periods = Array.isArray(json.periods) ? json.periods : [];
+          const ymList = periods
+            .map((p) => {
+              const y = p.year ?? p.Y ?? p.년 ?? p.fiscal_year;
+              const m = p.month ?? p.M ?? p.월 ?? p.fiscal_month;
+              if (!y || !m) return null;
+              return normalizeYm(y, m);
+            })
+            .filter(Boolean);
+
+          const uniq = Array.from(new Set(ymList)).sort();
+          if (!mounted) return;
+
+          setReportPeriods(uniq);
+          if (!selectedReportYm && uniq.length) {
+            setSelectedReportYm(uniq[uniq.length - 1]);
+          }
+          return; // ✅ endpoint 성공하면 여기서 종료
+        }
+      } catch (e) {
+        // endpoint 없을 수 있으니 무시하고 fallback
+      }
+
+      // 2) fallback: plReportData에서 추출
+      try {
+        const rows = Array.isArray(plReportData) ? plReportData : [];
+        const ymList = [];
+        rows.forEach((r) => {
+          const y =
+            r.year ??
+            r.Year ??
+            r.년도 ??
+            r.연도 ??
+            r.fiscal_year ??
+            r["연도"] ??
+            r["년도"];
+          const m =
+            r.month ??
+            r.Month ??
+            r.월 ??
+            r.fiscal_month ??
+            r["월"];
+          if (y && m) ymList.push(normalizeYm(y, m));
+          else if (r.year_month || r.yearMonth || r["년월"]) {
+            const raw = String(r.year_month || r.yearMonth || r["년월"]);
+            const mm = raw.match(/(20\d{2})\D?(\d{1,2})/);
+            if (mm) ymList.push(normalizeYm(mm[1], mm[2]));
+          }
+        });
+
+        const uniq = Array.from(new Set(ymList)).sort();
+        if (!mounted) return;
+
+        setReportPeriods(uniq);
+        if (!selectedReportYm && uniq.length) {
+          setSelectedReportYm(uniq[uniq.length - 1]);
+        }
+      } catch (err) {
+        console.warn("report periods fallback error:", err);
+      }
+    }
+
+    loadPeriods();
+
+    return () => {
+      mounted = false;
+    };
+    // plReportData가 갱신되면 fallback 목록도 갱신되도록 포함
+  }, [isLoggedIn, plReportData, selectedReportYm]);
 
   // ==========================
   // 엑셀 업로드 (코스트센터 파일) - 기존 유지
@@ -1310,7 +1412,7 @@ function App() {
     padding: 14,
   };
 
-  // ✅ 사이드메뉴: 아이콘을 "문자열"이 아니라 "이미지 변수"로
+  // ✅ 사이드메뉴: "그래프 전용 페이지" 항목 제거
   const sideMenus = [
     {
       id: "overview",
@@ -1407,6 +1509,10 @@ function App() {
           setPlDataUploaded(false);
           setPlReportRequested(false);
           setBackFile(null);
+
+          // ✅ report_data Month 상태 초기화(추가)
+          setSelectedReportYm("");
+          setReportPeriods([]);
         }}
         theme={theme}
         setTheme={setTheme}
@@ -1497,9 +1603,7 @@ function App() {
           </div>
         </div>
 
-        <div
-          style={{ width: 260, marginTop: 8, fontSize: 11, color: "#6b7280" }}
-        >
+        <div style={{ width: 260, marginTop: 8, fontSize: 11, color: "#6b7280" }}>
           <div
             style={{
               marginBottom: 6,
@@ -1737,12 +1841,8 @@ function App() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: 4 }}
-                  >
-                    <div
-                      style={{ display: "flex", alignItems: "center", gap: 10 }}
-                    >
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <span
                         style={{
                           width: 4,
@@ -1783,13 +1883,20 @@ function App() {
                       flexWrap: "wrap",
                     }}
                   >
+                    {/* ✅ Month: 탭에 따라 costMonthMeta vs reportPeriods 로 분기 */}
                     <span style={chipBase}>
                       <span>Month:</span>
 
                       <select
-                        value={selectedMonth || ""}
-                        onChange={(e) => setSelectedMonth(e.target.value)}
-                        disabled={!costMonthMeta?.length}
+                        value={isPlReportTab ? selectedReportYm || "" : selectedMonth || ""}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (isPlReportTab) setSelectedReportYm(v);
+                          else setSelectedMonth(v);
+                        }}
+                        disabled={
+                          isPlReportTab ? !reportPeriods?.length : !costMonthMeta?.length
+                        }
                         style={{
                           border: "none",
                           outline: "none",
@@ -1799,15 +1906,30 @@ function App() {
                           fontSize: 10,
                           fontWeight: 800,
                           color: "#0f172a",
-                          cursor: costMonthMeta?.length
-                            ? "pointer"
-                            : "not-allowed",
+                          cursor:
+                            isPlReportTab
+                              ? reportPeriods?.length
+                                ? "pointer"
+                                : "not-allowed"
+                              : costMonthMeta?.length
+                              ? "pointer"
+                              : "not-allowed",
                           appearance: "none",
                           WebkitAppearance: "none",
                           MozAppearance: "none",
                         }}
                       >
-                        {!costMonthMeta?.length ? (
+                        {isPlReportTab ? (
+                          !reportPeriods?.length ? (
+                            <option value="">-</option>
+                          ) : (
+                            reportPeriods.map((ym) => (
+                              <option key={ym} value={ym}>
+                                {ym}
+                              </option>
+                            ))
+                          )
+                        ) : !costMonthMeta?.length ? (
                           <option value="">-</option>
                         ) : (
                           costMonthMeta.map((m) => (
@@ -1933,9 +2055,14 @@ function App() {
           />
         )}
 
-        {/* ✅ 주제3: P&L 기본 */}
+        {/* ✅ 주제3: P&L 기본 (표 페이지) */}
         {tab === "pl-report-basic" && (
           <PlReportTab
+            // ✅ report_data 기준 Month 전달(추가)
+            selectedYm={selectedReportYm}
+            setSelectedYm={setSelectedReportYm}
+            reportPeriods={reportPeriods}
+            // ===== 기존 props 전부 유지 =====
             plDetailTab={plDetailTab}
             setPlDetailTab={setPlDetailTab}
             plViewMode={plViewMode}
@@ -1958,7 +2085,9 @@ function App() {
         )}
 
         {/* ✅ 주제3: P&L 심화(원인 분석) */}
-        {tab === "pl-report-cause" && <PlReportCauseTab />}
+        {tab === "pl-report-cause" && (
+          <PlReportCauseTab selectedYm={selectedReportYm} />
+        )}
 
         {/* ✅ 주제4: Forecast */}
         {tab === "forecast" && <ForecastTab cardStyle={cardStyle} />}
