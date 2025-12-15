@@ -1,5 +1,5 @@
 // src/components/sidebar/SidebarPanel.jsx
-import React from "react";
+import React, { useMemo } from "react";
 
 export default function SidebarPanel({
   sideMenus,
@@ -34,6 +34,116 @@ export default function SidebarPanel({
   handleCancelPendingPlFile,
   plUploading,
 }) {
+  const isChildActive = (m) => {
+    if (!m) return false;
+    if (tab === m.id) return true;
+    const kids = Array.isArray(m.children) ? m.children : [];
+    return kids.some((c) => c?.id === tab);
+  };
+
+  const safeMenus = useMemo(() => {
+    return (sideMenus || []).filter((m) => !!m && typeof m === "object");
+  }, [sideMenus]);
+
+  const MenuButton = ({
+    label,
+    desc,
+    active,
+    onClick,
+    indent = 0,
+    isChild = false,
+  }) => {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        style={{
+          border: "none",
+          textAlign: "left",
+          padding: isChild ? "6px 8px" : "8px 10px",
+          borderRadius: 10,
+          cursor: "pointer",
+          backgroundColor: active
+            ? isChild
+              ? "#eef2ff"
+              : "#f1f5f9"
+            : "transparent",
+          color: active ? BRAND_DARK : isChild ? "#64748b" : "#475569",
+          position: "relative",
+        }}
+        onMouseEnter={(e) => {
+          if (!active)
+            e.currentTarget.style.backgroundColor = isChild
+              ? "#f8fafc"
+              : "#f1f5f9";
+        }}
+        onMouseLeave={(e) => {
+          if (!active) e.currentTarget.style.backgroundColor = "transparent";
+        }}
+      >
+        {active && !isChild && (
+          <span
+            style={{
+              position: "absolute",
+              left: 4,
+              top: 8,
+              bottom: 8,
+              width: 3,
+              borderRadius: 999,
+              backgroundColor: "#1e40af",
+            }}
+          />
+        )}
+
+        {isChild && (
+          <span
+            style={{
+              position: "absolute",
+              left: indent - 6,
+              top: "50%",
+              width: 4,
+              height: 4,
+              borderRadius: 999,
+              backgroundColor: active ? "#6366f1" : "#c7d2fe",
+              transform: "translateY(-50%)",
+            }}
+          />
+        )}
+
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            paddingLeft: indent,
+          }}
+        >
+          <span
+            style={{
+              fontSize: isChild ? 11 : 12,
+              fontWeight: active ? 700 : 600,
+            }}
+          >
+            {label}
+          </span>
+
+          {!isChild && desc && (
+            <span
+              style={{
+                fontSize: 10,
+                color: "#94a3b8",
+                fontWeight: 600,
+              }}
+            >
+              {desc}
+            </span>
+          )}
+        </div>
+      </button>
+    );
+  };
+
+  const FORECAST_ID = "forecast";
+
   return (
     <div
       style={{
@@ -87,78 +197,64 @@ export default function SidebarPanel({
           flex: 1,
           display: "flex",
           flexDirection: "column",
-          gap: 4,
+          gap: 7,
           marginBottom: 12,
-          marginTop: 13,
+          marginTop: 10,
         }}
       >
-        {sideMenus.map((m) => {
-          const active = tab === m.id;
+        {safeMenus.map((m) => {
+          const kids = Array.isArray(m.children) ? m.children : [];
+          const parentActive = isChildActive(m);
 
           return (
-            <button
-              key={m.id}
-              onClick={() => setTab(m.id)}
-              style={{
-                border: "1px solid " + (active ? "#cbd5e1" : "transparent"),
-                textAlign: "left",
-                padding: "8px 10px",
-                borderRadius: 12,
-                cursor: "pointer",
-                backgroundColor: active ? "#f1f5f9" : "transparent",
-                color: active ? BRAND_DARK : "#64748b",
-                transition:
-                  "background-color 0.15s ease, border-color 0.15s ease",
-                position: "relative",
-              }}
-              onMouseEnter={(e) => {
-                if (!active) e.currentTarget.style.backgroundColor = "#f8fafc";
-              }}
-              onMouseLeave={(e) => {
-                if (!active)
-                  e.currentTarget.style.backgroundColor = "transparent";
-              }}
-            >
-              {active && (
-                <span
-                  style={{
-                    position: "absolute",
-                    left: 6,
-                    top: 10,
-                    bottom: 10,
-                    width: 3,
-                    borderRadius: 999,
-                    backgroundColor: "#1e40af",
-                  }}
+            <React.Fragment key={m.id}>
+              {/* 일반 메뉴 */}
+              {kids.length === 0 ? (
+                <MenuButton
+                  label={m.label}
+                  desc={m.desc}
+                  active={tab === m.id}
+                  onClick={() => setTab(m.id)}
                 />
-              )}
-
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  paddingLeft: active ? 10 : 0,
-                }}
-              >
-                <span style={{ fontSize: 12, fontWeight: active ? 800 : 600 }}>
-                  {m.label}
-                </span>
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: active ? "#475569" : "#94a3b8",
-                    fontWeight: 600,
-                  }}
+              ) : (
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 4 }}
                 >
-                  {m.desc}
-                </span>
-              </div>
-            </button>
+                  {/* 부모 */}
+                  <MenuButton
+                    label={m.label}
+                    desc={m.desc}
+                    active={parentActive}
+                    onClick={() => setTab(kids[0].id)}
+                  />
+
+                  {/* 자식 */}
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 4 }}
+                  >
+                    {kids.map((c) => {
+                      const active = tab === c.id;
+                      return (
+                        <MenuButton
+                          key={c.id}
+                          label={c.label}
+                          desc={c.desc}
+                          active={active}
+                          onClick={() => setTab(c.id)}
+                          indent={14}
+                          isChild={true}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
       </nav>
 
-      {/* 업로드 영역 */}
+      {/* 업로드 영역 (원래 있던거 그대로 이어서 쓰면 됨) */}
     </div>
   );
 }

@@ -43,7 +43,6 @@ export default function SidebarIcons({
   const menuRef = useRef(null);
   const popupRef = useRef(null);
 
-  // ✅ 팝업은 이제 "아이콘 옆"에 absolute로 붙일거라, anchor 내부 좌표 사용
   const [popupPos, setPopupPos] = useState({ left: 40, top: -160, width: 190 });
 
   useEffect(() => {
@@ -89,7 +88,30 @@ export default function SidebarIcons({
   const pickPl = () =>
     onPickPlFile ? onPickPlFile() : plFileInputRef.current?.click();
 
-  // ✅ 팝업 열릴 때: "아이콘 오른쪽에 붙이고", 위아래만 화면 밖 안나가게 clamp
+  // ✅ 부모 메뉴 active 판정(자식 포함)
+  const isMenuActive = (m) => {
+    if (!m) return false;
+    if (tab === m.id) return true;
+    const kids = Array.isArray(m.children) ? m.children : [];
+    return kids.some((c) => c?.id === tab);
+  };
+
+  const iconMenus = useMemo(() => {
+    return (sideMenus || []).filter((m) => !!m && typeof m === "object");
+  }, [sideMenus]);
+
+  // ✅ 아이콘 클릭 시: children 있으면 기본(첫번째 자식) 탭으로 이동
+  const handleIconClick = (m) => {
+    if (!m) return;
+    const kids = Array.isArray(m.children) ? m.children : [];
+    if (kids.length > 0) {
+      setTab(kids[0].id);
+      return;
+    }
+    setTab(m.id);
+  };
+
+  // ✅ 팝업 열릴 때 clamp
   useLayoutEffect(() => {
     if (!openUploadMenu) return;
     const anchor = menuRef.current;
@@ -99,43 +121,32 @@ export default function SidebarIcons({
     const POP_H_EST = 210;
     const GAP = 8;
 
-    // anchor 내부 absolute 기준 좌표
-    // left: 아이콘(32px) + GAP
     let left = 32 + GAP;
-
-    // top: 팝업이 아이콘과 "세로 중앙" 정도 맞도록
-    // 아이콘 높이 32 기준: top = -(POP_H_EST/2 - 16)
     let top = -(POP_H_EST / 2 - 16);
 
-    // viewport clamp는 anchor의 화면 좌표 + (left/top)로 계산
     const rect = anchor.getBoundingClientRect();
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const PADDING = 10;
 
-    // 팝업의 화면상 위치
     let screenLeft = rect.left + left;
     let screenTop = rect.top + top;
 
-    // 오른쪽이 화면 넘어가면 left를 줄여서 "왼쪽으로" (필요시)
     if (screenLeft + POP_W > vw - PADDING) {
       const overflow = screenLeft + POP_W - (vw - PADDING);
       left = Math.max(PADDING - rect.left, left - overflow);
       screenLeft = rect.left + left;
     }
-    // 왼쪽이 화면 밖이면
     if (screenLeft < PADDING) {
       left += PADDING - screenLeft;
       screenLeft = rect.left + left;
     }
 
-    // 아래가 화면 넘어가면 top 조정
     if (screenTop + POP_H_EST > vh - PADDING) {
       const overflow = screenTop + POP_H_EST - (vh - PADDING);
       top = top - overflow;
       screenTop = rect.top + top;
     }
-    // 위가 화면 밖이면
     if (screenTop < PADDING) {
       top = top + (PADDING - screenTop);
     }
@@ -361,6 +372,9 @@ export default function SidebarIcons({
     );
   };
 
+  // ✅ Forecast 위 여백 넣기 위한 기준 ID
+  const FORECAST_ID = "forecast";
+
   return (
     <aside
       style={{
@@ -413,50 +427,54 @@ export default function SidebarIcons({
       <nav
         style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}
       >
-        {sideMenus.map((m) => {
-          const active = tab === m.id;
+        {iconMenus.map((m) => {
+          const active = isMenuActive(m);
           const ICON_BOX = 36;
           const ICON_SIZE = 20;
 
           return (
-            <button
-              key={m.id}
-              onClick={() => setTab(m.id)}
-              title={m.label}
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                display: "flex",
-                justifyContent: "center",
-                alignItems: "center",
-                padding: "4px 0",
-              }}
-            >
-              <div
+            <React.Fragment key={m.id}>
+              {/* ✅ Forecast 버튼 직전에 여백 추가 */}
+              {m.id === FORECAST_ID && <div style={{ height: 50 }} />}
+
+              <button
+                onClick={() => handleIconClick(m)}
+                title={m.label}
                 style={{
-                  width: ICON_BOX,
-                  height: ICON_BOX,
-                  borderRadius: 10,
-                  backgroundColor: active ? "#e2e8f0" : "#f8fafc",
-                  border: "1px solid " + (active ? "#cbd5e1" : "#e5e7eb"),
+                  all: "unset",
+                  cursor: "pointer",
                   display: "flex",
-                  alignItems: "center",
                   justifyContent: "center",
+                  alignItems: "center",
+                  padding: "4px 0",
                 }}
               >
-                <img
-                  src={m.icon}
-                  alt={m.label}
+                <div
                   style={{
-                    width: ICON_SIZE,
-                    height: ICON_SIZE,
-                    objectFit: "contain",
-                    opacity: active ? 1 : 0.75,
-                    display: "block",
+                    width: ICON_BOX,
+                    height: ICON_BOX,
+                    borderRadius: 10,
+                    backgroundColor: active ? "#e2e8f0" : "#f8fafc",
+                    border: "1px solid " + (active ? "#cbd5e1" : "#e5e7eb"),
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
-                />
-              </div>
-            </button>
+                >
+                  <img
+                    src={m.icon}
+                    alt={m.label}
+                    style={{
+                      width: ICON_SIZE,
+                      height: ICON_SIZE,
+                      objectFit: "contain",
+                      opacity: active ? 1 : 0.75,
+                      display: "block",
+                    }}
+                  />
+                </div>
+              </button>
+            </React.Fragment>
           );
         })}
       </nav>
@@ -565,7 +583,7 @@ export default function SidebarIcons({
             </div>
           </button>
 
-          {/* ✅ 팝업: 아이콘 "바로 옆"에 붙는 absolute */}
+          {/* 팝업 */}
           {openUploadMenu && (
             <div
               ref={popupRef}

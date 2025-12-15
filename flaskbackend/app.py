@@ -1,5 +1,11 @@
 # =========================
-# app.py  (MODIFIED)
+# app.py  (MODIFIED - 고정비/변동비/시즌·이벤트성만 표시)
+#  - 기능/엔드포인트/로직은 그대로
+#  - 심화분류(advancedMap)는 3개 값만 나오도록 정규화 + 필터
+#  - /api/init-data 에 advancedMap 포함(프론트 배지 표시용)
+#  - 누락되어 있던 유틸(_parse_year_month_from_upload_filename, _find_existing_pl_files_for_period) 추가
+#  - ✅ (추가) 사유요약에 전월대비 변동% 포함
+#  - ✅ (추가) 직전 3개월 유효값 있으면 12개월 언급 X / 없으면 12개월 유효값 O/X 표시
 # =========================
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -36,7 +42,7 @@ if str(BASE_DIR) not in sys.path:
 # ✅ cost_center pipeline imports
 # =========================
 from cost_center import (
-    parse_cost_center_excel,
+    parse_cost_center_excel,   # (호환용) 필요시 사용
     detect_potential_missing,
     build_features,
     compute_corr_pairs,
@@ -77,6 +83,11 @@ BACKDATA_EXCEL_PATH = BASE_DIR / "3back_data_with_fake11_v2.xlsx"
 REPORT_DATA_DIR = BASE_DIR / "report_data"
 REPORT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+ADV_CLASS_XLSX_PATH = BASE_DIR / "코스트센터별_분류.xlsx"
+
+# ✅ 서버 시작 시 1회 모델 로딩
+forecast_payload = load_or_train()
+
 
 def get_cache_path(name: str) -> str:
     return str(CACHE_DIR / name)
@@ -93,42 +104,345 @@ def get_connection():
     )
 
 
-# ✅ 서버 시작 시 1회 모델 로딩
-forecast_payload = load_or_train()
-
-
 # =====================================================
-# ✅ (추가) 사유 요약 생성 유틸
-# - 표(리스트)에서는 reason_summary를 쓰고
-# - 상세(선택 이슈 추이)에서는 reason_kor(원문)를 그대로 사용
+# ✅ 심화분류(고정비/변동비/시즌·이벤트성만 표시되게 정규화)
+#  - 반환값을 3개로 "고정비", "변동비", "시즌/이벤트성"만 허용
+#  - 그 외는 "" 로 처리 → 프론트에서 배지 미표시
 # =====================================================
-def _summarize_reason(reason_kor: str, reason_tags, display_issue_type: str) -> str:
-    tags = []
-    if isinstance(reason_tags, list):
-        tags = [str(x).strip() for x in reason_tags if str(x).strip()]
-    elif reason_tags:
-        tags = [x.strip() for x in re.split(r"[,|/]", str(reason_tags)) if x.strip()]
+_ALLOWED_ADV = {"고정비", "변동비", "시즌/이벤트성"}
 
-    # 1) 태그가 있으면 태그 중심 요약(최대 2개)
-    if tags:
-        # 너무 길어지면 2개까지만
-        return " · ".join(tags[:2])
 
-    # 2) 태그가 없으면 이슈 타입 기반 + 원문 첫 문장/앞부분
-    base = str(display_issue_type or "").strip() or "이슈"
-    s = (reason_kor or "").strip()
+def _normalize_advanced(v) -> str:
+    s = str(v or "").strip()
     if not s:
-        return base
+        return ""
 
-    # 첫 문장 느낌으로 잘라주기(너무 길면 줄임)
-    cut = s.split(" / ")[0].split("\n")[0].strip()
-    if len(cut) > 28:
-        cut = cut[:28].rstrip() + "…"
-    return f"{base}: {cut}"
+    # 시즌/이벤트성 (표기 통일)
+    if s in ("시즌/이벤트", "시즌", "이벤트", "시즌성", "시즌·이벤트성", "시즌/이벤트성"):
+        return "시즌/이벤트성"
+
+    # 고정비/변동비
+    if s == "고정비":
+        return "고정비"
+    if s == "변동비":
+        return "변동비"
+
+    # 키워드 기반 보정
+    if re.search(r"고정", s):
+        return "고정비"
+    if re.search(r"변동", s):
+        return "변동비"
+    if re.search(r"시즌|이벤트", s):
+        return "시즌/이벤트성"
+
+    # 그 외는 표시 안 함
+    return ""
+
+
+def load_advanced_class_map(use_cache: bool = True) -> Dict[str, Dict[str, str]]:
+    """
+    반환:
+      {
+        "byCcAcc": { "CC|ACC": "고정비|변동비|시즌/이벤트성" },
+        "byAcc":   { "ACC": "고정비|변동비|시즌/이벤트성" }
+      }
+    """
+    cache_path = get_cache_path("advanced_class_map.pkl")
+
+    if use_cache and os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as f:
+                payload = pickle.load(f)
+            # ✅ 혹시 과거 캐시에 다른 값이 섞여 있어도 3개만 남김
+            byCcAcc = {k: v for k, v in (payload.get("byCcAcc") or {}).items() if v in _ALLOWED_ADV}
+            byAcc = {k: v for k, v in (payload.get("byAcc") or {}).items() if v in _ALLOWED_ADV}
+            return {"byCcAcc": byCcAcc, "byAcc": byAcc}
+        except Exception:
+            pass
+
+    if not ADV_CLASS_XLSX_PATH.exists():
+        return {"byCcAcc": {}, "byAcc": {}}
+
+    df = pd.read_excel(str(ADV_CLASS_XLSX_PATH))
+    df = df.replace({np.nan: ""})
+
+    def pick(row, keys):
+        for k in keys:
+            if k in row and str(row.get(k)).strip() != "":
+                return row.get(k)
+        return ""
+
+    by_cc_acc: Dict[str, str] = {}
+    by_acc: Dict[str, str] = {}
+
+    for _, r in df.iterrows():
+        row = r.to_dict()
+
+        acc_raw = pick(row, ["계정코드", "account_code", "계정", "acc_code", "Code"])
+        cc_raw = pick(row, ["코스트센터코드", "코스트센터", "CC", "cost_center", "코스트센터코드값"])
+        cls_raw = pick(row, ["심화분류", "분류", "advanced", "class", "심화", "구분"])
+
+        acc = str(acc_raw or "").strip()
+        cc = str(cc_raw or "").strip()
+        cls = _normalize_advanced(cls_raw)
+
+        # ✅ 3개 외는 cls="" → 저장하지 않음
+        if not acc or cls not in _ALLOWED_ADV:
+            continue
+
+        if acc not in by_acc:
+            by_acc[acc] = cls
+
+        if cc:
+            by_cc_acc[f"{cc}|{acc}"] = cls
+
+    payload = {"byCcAcc": by_cc_acc, "byAcc": by_acc}
+
+    try:
+        with open(cache_path, "wb") as f:
+            pickle.dump(payload, f)
+    except Exception:
+        pass
+
+    return payload
 
 
 # =====================================================
-# 유틸: 파일명에서 연/월 추출
+# ✅ (수정) 사유 요약 생성 유틸: 전월대비 % 포함 + 3개월/12개월 유효값 룰
+#  - 직전3개월 유효값 있으면: 12개월 언급 X
+#  - 직전3개월 유효값 없으면: 직전12개월 유효값 O/X 표시
+# =====================================================
+def _summarize_reason(
+    reason_kor: str,
+    reason_tags,
+    display_issue_type: str,
+    mom_change_pct=None,
+    lookback3_has_value: Optional[bool] = None,
+    lookback12_has_value: Optional[bool] = None,
+) -> str:
+    # -------------------------
+    # 0) 공통 유틸
+    # -------------------------
+    def _ox(v):
+        if v is True:
+            return "O"
+        if v is False:
+            return "X"
+        return "?"
+
+    def _fmt_mom(pct):
+        if pct is None or pd.isna(pct):
+            return None
+        try:
+            v = float(pct)
+            sign = "+" if v > 0 else ""
+            return f"전월대비 {sign}{v:.1f}%"
+        except Exception:
+            return None
+
+    def _as_list(x):
+        if x is None:
+            return []
+        if isinstance(x, str):
+            return [x]
+        try:
+            return list(x)
+        except Exception:
+            return []
+
+    rk = str(reason_kor or "").strip()
+    tags_in = _as_list(reason_tags)
+
+    # -------------------------
+    # 1) 태그/키워드 정규화 규칙
+    #    - "reason_tags" + "reason_kor 문장" 모두에서 태그를 뽑아낸다
+    # -------------------------
+    TAG_MAP = {
+        # 변동 방향/크기
+        "급증": "급증", "상승": "급증", "increase": "급증",
+        "급감": "급감", "하락": "급감", "decrease": "급감",
+
+        # 결측/0
+        "결측": "결측", "누락": "결측", "missing": "결측",
+        "0값": "0값", "0 값": "0값", "제로": "0값",
+
+        # 패턴/통계/모델
+        "패턴이탈": "패턴이탈", "패턴 이탈": "패턴이탈",
+        "밴드이탈": "패턴이탈", "band": "패턴이탈", "normal band": "패턴이탈",
+        "zscore": "zscore", "z-score": "zscore", "z 점수": "zscore",
+        "isolationforest": "IF", "isolation forest": "IF", "iforest": "IF",
+        "lof": "LOF", "localoutlierfactor": "LOF", "local outlier factor": "LOF",
+        "상관": "상관이상", "corr": "상관이상", "correlation": "상관이상",
+
+        # 기타(필요하면 확장)
+        "반복": "반복",
+        "계절": "시즌", "시즌": "시즌", "이벤트": "이벤트",
+    }
+
+    # 요약에 보여줄 태그(너무 많아지면 가독성 떨어져서 제한)
+    ORDER = ["결측", "0값", "급증", "급감", "패턴이탈", "zscore", "IF", "LOF", "상관이상", "반복", "시즌", "이벤트"]
+    ALLOWED = set(ORDER)
+
+    def _canonize(tag: str) -> Optional[str]:
+        s = str(tag or "").strip()
+        if not s:
+            return None
+        key = s.lower()
+        canon = TAG_MAP.get(s, TAG_MAP.get(key, s))
+        canon = str(canon).strip()
+        return canon if canon in ALLOWED else None
+
+    # 1-A) reason_tags에서 수집
+    bag = []
+    for t in tags_in:
+        c = _canonize(t)
+        if c:
+            bag.append(c)
+
+    # 1-B) reason_kor에서 키워드 자동 추출(문장에 단서가 있어도 태그로 승격)
+    #     - 필요하면 여기 패턴만 계속 늘리면 됨
+    rk_low = rk.lower()
+    heuristics = [
+        ("결측", [r"결측", r"누락", r"비어", r"없음", r"missing"]),
+        ("0값",  [r"\b0\b", r"0원", r"영원", r"제로", r"0값"]),
+        ("패턴이탈", [r"밴드", r"상한", r"하한", r"범위", r"pattern", r"패턴"]),
+        ("zscore", [r"z\s*score", r"z-?score", r"z점수"]),
+        ("IF", [r"isolation", r"iforest", r"iso"]),
+        ("LOF", [r"\blof\b", r"local\s*outlier"]),
+        ("상관이상", [r"상관", r"corr", r"correlation"]),
+        ("반복", [r"주기", r"반복", r"격월", r"매월", r"분기"]),
+        ("시즌", [r"계절", r"시즌"]),
+        ("이벤트", [r"이벤트", r"명절", r"창립", r"연말", r"프로모션"]),
+    ]
+    for canon, pats in heuristics:
+        for p in pats:
+            if re.search(p, rk_low):
+                bag.append(canon)
+                break
+
+    # 중복 제거 + 고정 순서로 정렬
+    bag_set = set(bag)
+    norm_tags = [t for t in ORDER if t in bag_set]
+
+    # -------------------------
+    # 2) 케이스별 "고정 포맷"으로 출력 (통일성 핵심)
+    # -------------------------
+    # (A) 누락: 유효값 룰만 깔끔히 + (결측/0값 태그가 있으면 같이)
+    if display_issue_type == "누락":
+        if lookback3_has_value is True:
+            core = f"누락 · 유효값(3M:{_ox(True)})"
+        elif lookback3_has_value is False:
+            core = f"누락 · 유효값(3M:{_ox(False)}, 12M:{_ox(lookback12_has_value)})"
+        else:
+            core = "누락 · 유효값(3M:?)"
+
+        # 누락 원인이 0인지 결측인지 정도는 같이 보여주면 훨씬 납득 쉬움
+        miss_tags = [t for t in norm_tags if t in ("결측", "0값")]
+        if miss_tags:
+            core += f" · 원인:{'/'.join(miss_tags)}"
+        return core
+
+    # (B) 이상/기타: "전월대비" + "태그(원인들)" + (없으면 reason_kor 한 줄 요약)
+    parts = []
+    mom_txt = _fmt_mom(mom_change_pct)
+    if mom_txt:
+        parts.append(mom_txt)
+
+    # 누락용 태그(결측/0값)는 이상 케이스에서는 보통 노이즈라 제외 (원하면 유지 가능)
+    show_tags = [t for t in norm_tags if t not in ("결측", "0값")]
+    if show_tags:
+        parts.append("원인 " + "/".join(show_tags))
+
+    # 태그도 전월대비도 없으면, reason_kor 첫 문장 느낌만 짧게(너무 길면 컷)
+    if not parts and rk:
+        short = re.split(r"[.\n]", rk)[0].strip()
+        if len(short) > 40:
+            short = short[:40].rstrip() + "…"
+        parts.append(short)
+
+    return " · ".join(parts) if parts else ""
+
+
+
+
+# =====================================================
+# ✅ (추가) 전월 금액 / 전월대비 % 계산
+#  - prev_amount: 바로 전월 금액
+#  - mom_change_pct: (이번달-전월)/abs(전월)*100
+#    * 전월이 0이면 None (무한대 방지)
+# =====================================================
+def add_mom_change(df: pd.DataFrame) -> pd.DataFrame:
+    need = {"cost_center", "account_code", "year", "month", "amount"}
+    miss = need - set(df.columns)
+    if miss:
+        # 기존 로직 깨지지 않게 그냥 반환
+        return df
+
+    df = df.copy().sort_values(["cost_center", "account_code", "year", "month"])
+    df["prev_amount"] = df.groupby(["cost_center", "account_code"])["amount"].shift(1)
+
+    def _calc(row):
+        cur = row.get("amount")
+        prev = row.get("prev_amount")
+        if pd.isna(cur) or pd.isna(prev):
+            return None
+        try:
+            prev_f = float(prev)
+            cur_f = float(cur)
+        except Exception:
+            return None
+
+        # ✅ 이번달이 0이면 전월대비 계산/표시 안 함
+        if cur_f == 0.0:
+            return None
+
+        # ✅ 전월이 0이면 분모 문제라 None
+        if prev_f == 0.0:
+            return None
+
+        return (cur_f - prev_f) / abs(prev_f) * 100.0
+
+    df["mom_change_pct"] = df.apply(_calc, axis=1)
+    return df
+
+
+# =====================================================
+# ✅ (추가) 직전 3개월/12개월 유효값 존재 여부
+#  - 유효값 = NaN 아님 & 0 아님
+# =====================================================
+def add_lookback_valid_flags(df: pd.DataFrame) -> pd.DataFrame:
+    need = {"cost_center", "account_code", "year", "month", "amount"}
+    if (need - set(df.columns)):
+        return df
+
+    df = df.copy().sort_values(["cost_center", "account_code", "year", "month"])
+
+    def _is_valid(x):
+        if pd.isna(x):
+            return False
+        try:
+            return float(x) != 0.0
+        except Exception:
+            return False
+
+    df["_valid_amt"] = df["amount"].apply(_is_valid)
+
+    # 그룹별로 "현재월 제외"를 위해 shift(1) 후 rolling max
+    def _calc_flags(g):
+        pv = g["_valid_amt"].shift(1).fillna(False)
+        g["lookback3_has_value"] = pv.rolling(3, min_periods=1).max().astype(bool)
+        g["lookback12_has_value"] = pv.rolling(12, min_periods=1).max().astype(bool)
+        return g
+
+    df = df.groupby(["cost_center", "account_code"], group_keys=False).apply(_calc_flags)
+
+    df.drop(columns=["_valid_amt"], inplace=True, errors="ignore")
+    return df
+
+
+
+# =====================================================
+# 유틸: 파일명에서 연/월 추출 (통합보고서 파일명용)
 # =====================================================
 def _parse_year_month_from_report_filename(path: Path) -> Optional[Tuple[int, int]]:
     name = path.name
@@ -143,11 +457,73 @@ def _parse_year_month_from_report_filename(path: Path) -> Optional[Tuple[int, in
     return year, mm
 
 
+# =====================================================
+# 유틸: 업로드 파일명에서 연/월 추출 (back_data 업로드용)
+# =====================================================
+def _parse_year_month_from_upload_filename(filename: str) -> Optional[Tuple[int, int]]:
+    s = str(filename or "")
+
+    m1 = re.search(r"(20\d{2})\s*년\D*([0-1]?\d)\s*월", s)
+    if m1:
+        y = int(m1.group(1))
+        m = int(m1.group(2))
+        if 1 <= m <= 12:
+            return (y, m)
+
+    m2 = re.search(r"(\d{2})\s*년[_\s-]*([0-1]?\d)\s*월", s)
+    if m2:
+        yy = int(m2.group(1))
+        m = int(m2.group(2))
+        if 1 <= m <= 12:
+            return (2000 + yy, m)
+
+    m3 = re.search(r"(20\d{2})([0-1]\d)", s)
+    if m3:
+        y = int(m3.group(1))
+        m = int(m3.group(2))
+        if 1 <= m <= 12:
+            return (y, m)
+
+    m4 = re.search(r"(\d{2})([0-1]\d)", s)
+    if m4 and "20" not in s:
+        yy = int(m4.group(1))
+        m = int(m4.group(2))
+        if 1 <= m <= 12:
+            return (2000 + yy, m)
+
+    return None
+
+
+def _find_existing_pl_files_for_period(year: int, month: int) -> Dict[str, List[Path]]:
+    REPORT_DATA_DIR.mkdir(parents=True, exist_ok=True)
+    yy2 = year % 100
+
+    report_pattern = f"{yy2:02d}년_{month:02d}월*결산보고서_통합*.xlsx"
+    reports = list(REPORT_DATA_DIR.glob(report_pattern))
+
+    back_pattern = f"{yy2:02d}년_{month:02d}월*back*.xlsx"
+    backs = list(REPORT_DATA_DIR.glob(back_pattern))
+
+    reports += list(REPORT_DATA_DIR.glob(f"{year}년*{month:02d}월*결산보고서_통합*.xlsx"))
+    backs += list(REPORT_DATA_DIR.glob(f"{year}년*{month:02d}월*back*.xlsx"))
+
+    return {
+        "reports": sorted(set(reports), key=lambda p: p.stat().st_mtime, reverse=True),
+        "backs": sorted(set(backs), key=lambda p: p.stat().st_mtime, reverse=True),
+    }
+
+
+# =====================================================
+# Health
+# =====================================================
 @app.route("/api/health", methods=["GET"])
 def health_check():
     return jsonify({"status": "ok"})
 
 
+# =====================================================
+# Auth
+# =====================================================
 @app.route("/api/login", methods=["POST"])
 def api_login():
     data = request.get_json() or {}
@@ -278,6 +654,87 @@ def reset_password():
         return jsonify({"success": False, "message": "해당 아이디(또는 이메일)를 사용하는 사용자를 찾을 수 없습니다."}), 404
 
     return jsonify({"success": True, "message": "재설정 링크를 전송했다고 가정합니다."}), 200
+
+
+# =====================================================
+# 4. 단일 월 업로드 엑셀 파싱 (유연 파서)
+# =====================================================
+def _normalize_year_month_label(label: str) -> Tuple[str, int, int]:
+    s = str(label)
+    m = re.search(r"(20\d{2})[^0-9]*([0-1]?\d)", s)
+    if not m:
+        raise ValueError(f"연-월 정보를 찾을 수 없습니다: {label}")
+    year = int(m.group(1))
+    month = int(m.group(2))
+    ym = f"{year:04d}-{month:02d}"
+    return ym, year, month
+
+
+def parse_single_month_excel(file_stream: io.BytesIO) -> pd.DataFrame:
+    raw = pd.read_excel(file_stream, header=None)
+
+    if raw.shape[1] < 5:
+        raise ValueError("예상보다 적은 컬럼 수입니다. 업로드 양식을 확인하세요.")
+
+    header = raw.iloc[0]
+    header_str = header.astype(str)
+
+    month_col_idx = None
+    for i, v in enumerate(header_str):
+        if re.search(r"20\d{2}\s*년\s*\d{1,2}\s*월", v):
+            month_col_idx = i
+            break
+    if month_col_idx is None:
+        month_col_idx = raw.shape[1] - 1
+
+    month_label = header.iloc[month_col_idx]
+    year_month, year, month = _normalize_year_month_label(month_label)
+
+    df = raw.iloc[1:].copy()
+
+    def find_col(keyword_list, default_idx):
+        for i, v in enumerate(header_str):
+            for kw in keyword_list:
+                if kw in v:
+                    return i
+        return default_idx
+
+    cc_code_idx = find_col(["코스트센터코드", "코스트센터 코드", "코스트센터"], 0)
+    cc_name_idx = find_col(["코스트센터명", "코스트센터 명"], 1)
+    acc_code_idx = find_col(["계정코드", "계정 코드"], 2)
+    acc_name_idx = find_col(["계정명", "계정 명"], 3)
+
+    rename_map = {
+        cc_code_idx: "cost_center",
+        cc_name_idx: "cc_name",
+        acc_code_idx: "account_code",
+        acc_name_idx: "account_name",
+        month_col_idx: "amount",
+    }
+
+    df = df.rename(columns=rename_map)
+
+    needed_cols = ["cost_center", "cc_name", "account_code", "account_name", "amount"]
+    missing = [c for c in needed_cols if c not in df.columns]
+    if missing:
+        raise ValueError(f"필수 컬럼이 누락되었습니다: {', '.join(missing)}")
+
+    df = df[needed_cols]
+
+    for col in ["cost_center", "cc_name", "account_code", "account_name"]:
+        df[col] = df[col].astype(str).str.strip()
+
+    df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
+
+    df["year_month"] = year_month
+    df["year"] = year
+    df["month"] = month
+
+    if "cost_nature" not in df.columns:
+        df["cost_nature"] = "기타"
+
+    df = df[df["cost_center"].notna() & (df["cost_center"].astype(str) != "nan")]
+    return df.reset_index(drop=True)
 
 
 # =====================================================
@@ -454,91 +911,22 @@ def init_data():
         backData = []
         codeNameMap = {}
 
+    try:
+        advancedMap = load_advanced_class_map(use_cache=True)
+    except Exception as e:
+        print("[init-data] advancedMap load error:", e)
+        advancedMap = {"byCcAcc": {}, "byAcc": {}}
+
     anomalyData: List[Dict[str, Any]] = []
     return jsonify(
-        {"costData": costData, "backData": backData, "codeNameMap": codeNameMap, "anomalyData": anomalyData}
+        {
+            "costData": costData,
+            "backData": backData,
+            "codeNameMap": codeNameMap,
+            "anomalyData": anomalyData,
+            "advancedMap": advancedMap,
+        }
     )
-
-
-# =====================================================
-# 4. 단일 월 업로드 엑셀 파싱 (유연 파서)
-# =====================================================
-def _normalize_year_month_label(label: str) -> Tuple[str, int, int]:
-    s = str(label)
-    m = re.search(r"(20\d{2})[^0-9]*([0-1]?\d)", s)
-    if not m:
-        raise ValueError(f"연-월 정보를 찾을 수 없습니다: {label}")
-    year = int(m.group(1))
-    month = int(m.group(2))
-    ym = f"{year:04d}-{month:02d}"
-    return ym, year, month
-
-
-def parse_single_month_excel(file_stream: io.BytesIO) -> pd.DataFrame:
-    raw = pd.read_excel(file_stream, header=None)
-
-    if raw.shape[1] < 5:
-        raise ValueError("예상보다 적은 컬럼 수입니다. 업로드 양식을 확인하세요.")
-
-    header = raw.iloc[0]
-    header_str = header.astype(str)
-
-    month_col_idx = None
-    for i, v in enumerate(header_str):
-        if re.search(r"20\d{2}\s*년\s*\d{1,2}\s*월", v):
-            month_col_idx = i
-            break
-    if month_col_idx is None:
-        month_col_idx = raw.shape[1] - 1
-
-    month_label = header.iloc[month_col_idx]
-    year_month, year, month = _normalize_year_month_label(month_label)
-
-    df = raw.iloc[1:].copy()
-
-    def find_col(keyword_list, default_idx):
-        for i, v in enumerate(header_str):
-            for kw in keyword_list:
-                if kw in v:
-                    return i
-        return default_idx
-
-    cc_code_idx = find_col(["코스트센터코드", "코스트센터 코드", "코스트센터"], 0)
-    cc_name_idx = find_col(["코스트센터명", "코스트센터 명"], 1)
-    acc_code_idx = find_col(["계정코드", "계정 코드"], 2)
-    acc_name_idx = find_col(["계정명", "계정 명"], 3)
-
-    rename_map = {
-        cc_code_idx: "cost_center",
-        cc_name_idx: "cc_name",
-        acc_code_idx: "account_code",
-        acc_name_idx: "account_name",
-        month_col_idx: "amount",
-    }
-
-    df = df.rename(columns=rename_map)
-
-    needed_cols = ["cost_center", "cc_name", "account_code", "account_name", "amount"]
-    missing = [c for c in needed_cols if c not in df.columns]
-    if missing:
-        raise ValueError(f"필수 컬럼이 누락되었습니다: {', '.join(missing)}")
-
-    df = df[needed_cols]
-
-    for col in ["cost_center", "cc_name", "account_code", "account_name"]:
-        df[col] = df[col].astype(str).str.strip()
-
-    df["amount"] = pd.to_numeric(df["amount"], errors="coerce")
-
-    df["year_month"] = year_month
-    df["year"] = year
-    df["month"] = month
-
-    if "cost_nature" not in df.columns:
-        df["cost_nature"] = "기타"
-
-    df = df[df["cost_center"].notna() & (df["cost_center"].astype(str) != "nan")]
-    return df.reset_index(drop=True)
 
 
 def build_history_map(df: pd.DataFrame) -> Dict[str, List[Dict[str, Any]]]:
@@ -635,6 +1023,11 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
     df_all = run_ensemble_outlier(df_all)
     df_all = build_human_explanations(df_all)
     df_all = add_normal_band(df_all)
+
+    # ✅ (추가) 전월대비 계산
+    df_all = add_mom_change(df_all)
+    # ✅ (추가) 직전 3/12개월 유효값 flag
+    df_all = add_lookback_valid_flags(df_all)
 
     wide_df = build_wide_cost_data(df_all)
     cost_data_updated = wide_df.to_dict(orient="records")
@@ -740,7 +1133,12 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
 
         reason_kor = str(row.get("reason_kor") or "")
         reason_tags = row.get("reason_tags", [])
-        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type)
+
+        mom_pct = row.get("mom_change_pct")
+        lb3 = row.get("lookback3_has_value")
+        lb12 = row.get("lookback12_has_value")
+
+        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type, mom_pct, lb3, lb12)
 
         issues.append(
             {
@@ -754,11 +1152,20 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
                 "account_name": str(row.get("account_name")),
                 "cost_nature": str(row.get("cost_nature")),
                 "amount": float(row.get("amount")) if pd.notna(row.get("amount")) else None,
+
+                # ✅ (추가) 전월 값/전월대비%
+                "prev_amount": float(row.get("prev_amount")) if pd.notna(row.get("prev_amount")) else None,
+                "mom_change_pct": float(mom_pct) if (mom_pct is not None and pd.notna(mom_pct)) else None,
+
+                # ✅ (추가) 직전 3/12개월 유효값 flag(원하면 프론트에도 쓸 수 있음)
+                "lookback3_has_value": bool(lb3) if pd.notna(lb3) else None,
+                "lookback12_has_value": bool(lb12) if pd.notna(lb12) else None,
+
                 "issue_type": str(row.get("issue_type")),
                 "severity_rank": int(row.get("severity_rank", 1)),
                 "status": row.get("status"),
                 "reason_kor": reason_kor,
-                "reason_summary": reason_summary,  # ✅ 추가
+                "reason_summary": reason_summary,
                 "reason_tags": reason_tags,
                 "zscore_12": float(row.get("zscore_12")) if pd.notna(row.get("zscore_12")) else None,
                 "dev_3m": float(row.get("dev_3m")) if pd.notna(row.get("dev_3m")) else None,
@@ -772,7 +1179,13 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
             }
         )
 
-    return {"summary": summary, "centers": centers, "issues": issues, "history": history_map, "costData": cost_data_updated}
+    return {
+        "summary": summary,
+        "centers": centers,
+        "issues": issues,
+        "history": history_map,
+        "costData": cost_data_updated,
+    }
 
 
 @app.route("/api/cost-center/analyze", methods=["POST"])
@@ -812,6 +1225,11 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
     df = run_ensemble_outlier(df)
     df = build_human_explanations(df)
     df = add_normal_band(df)
+
+    # ✅ (추가) 전월대비 계산
+    df = add_mom_change(df)
+    # ✅ (추가) 직전 3/12개월 유효값 flag
+    df = add_lookback_valid_flags(df)
 
     df["year_month"] = df["year_month"].astype(str)
     unique_ym = sorted(df["year_month"].unique())
@@ -888,7 +1306,6 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
     for _, row in issue_df.iterrows():
         row_key = f"{row.get('cost_center')}|{row.get('account_code')}"
 
-        # display label
         amt_val = row.get("amount")
         is_missing_like = False
         try:
@@ -906,7 +1323,12 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
 
         reason_kor = str(row.get("reason_kor") or "")
         reason_tags = row.get("reason_tags", [])
-        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type)
+
+        mom_pct = row.get("mom_change_pct")
+        lb3 = row.get("lookback3_has_value")
+        lb12 = row.get("lookback12_has_value")
+
+        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type, mom_pct, lb3, lb12)
 
         issues.append(
             {
@@ -920,12 +1342,21 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
                 "account_name": str(row.get("account_name")),
                 "cost_nature": str(row.get("cost_nature")),
                 "amount": float(row.get("amount")) if pd.notna(row.get("amount")) else None,
+
+                # ✅ (추가)
+                "prev_amount": float(row.get("prev_amount")) if pd.notna(row.get("prev_amount")) else None,
+                "mom_change_pct": float(mom_pct) if (mom_pct is not None and pd.notna(mom_pct)) else None,
+
+                # ✅ (추가)
+                "lookback3_has_value": bool(lb3) if pd.notna(lb3) else None,
+                "lookback12_has_value": bool(lb12) if pd.notna(lb12) else None,
+
                 "issue_type": str(row.get("issue_type")),
                 "severity_rank": int(row.get("severity_rank", 1)),
                 "status": row.get("status"),
                 "reason_kor": reason_kor,
-                "reason_summary": reason_summary,  # ✅ 추가
-                "reason_tags": reason_tags,         # ✅ 프론트 상세용
+                "reason_summary": reason_summary,
+                "reason_tags": reason_tags,
                 "zscore_12": float(row.get("zscore_12")) if pd.notna(row.get("zscore_12")) else None,
                 "dev_3m": float(row.get("dev_3m")) if pd.notna(row.get("dev_3m")) else None,
                 "iso_score": float(row.get("iso_score")) if pd.notna(row.get("iso_score")) else None,
@@ -954,7 +1385,6 @@ def analyze_cost_center_default():
     except Exception as e:
         print("[/api/cost-center/analyze-default] error:", e)
         return jsonify({"error": str(e)}), 500
-
 
 
 # =====================================================
@@ -1061,9 +1491,6 @@ def upload_pl_back_data():
         return jsonify({"error": str(e)}), 500
 
 
-# =====================================================
-# Topic3: P&L 리포트 기간 목록
-# =====================================================
 @app.route("/api/pl-report/periods", methods=["GET"])
 def get_pl_report_periods():
     try:
@@ -1090,9 +1517,6 @@ def get_pl_report_periods():
         return jsonify({"error": str(e)}), 500
 
 
-# =====================================================
-# Topic3: P&L 원인 분석 - 기간 목록
-# =====================================================
 @app.route("/api/pl-cause/periods", methods=["GET"])
 def get_pl_cause_periods():
     try:
@@ -1103,9 +1527,6 @@ def get_pl_cause_periods():
         return jsonify({"error": str(e)}), 500
 
 
-# =====================================================
-# Topic3: P&L 원인 분석 본문
-# =====================================================
 @app.route("/api/pl-cause", methods=["GET"])
 def get_pl_cause():
     try:
@@ -1126,9 +1547,6 @@ def get_pl_cause():
         return jsonify({"error": str(e)}), 500
 
 
-# =====================================================
-# Topic3: P&L 리포트 조회 API
-# =====================================================
 @app.route("/api/pl-report", methods=["GET"])
 def get_pl_report():
     try:
@@ -1305,9 +1723,6 @@ def closing_sync_and_retrain_status_alias():
         return jsonify({"ok": True, **_topic4_state}), 200
 
 
-# =====================================================
-# Topic4: 결산 예측 API
-# =====================================================
 @app.route("/api/closing/forecast", methods=["POST"])
 def api_closing_forecast():
     try:
@@ -1327,9 +1742,6 @@ def api_closing_forecast():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
-# =====================================================
-# (선택) 서버 시작 시 DB 연결 테스트
-# =====================================================
 def test_db_connection():
     if not USE_DB_AUTH:
         print("[DB TEST] 데모 모드(USE_DB_AUTH=False) → DB 연결 테스트 스킵")
