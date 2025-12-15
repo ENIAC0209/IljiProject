@@ -113,18 +113,7 @@ function hasDeeperLevel(flatItems, prefixParts) {
  * ========================= */
 const PL_TREE = {
   매출액: ["국내매출액", "수출매출액"],
-  국내매출액: [
-    "판매수량(국내)",
-    "제품매출",
-    "상품매출",
-    "설비매출",
-    "시작차매출",
-    "부산물매출 (영업)",
-    "부산물매출",
-    "기타매출",
-    "기타매출(금창)",
-    "사급",
-  ],
+  국내매출액: ["판매수량(국내)", "제품매출", "상품매출", "설비매출", "시작차매출", "부산물매출 (영업)", "부산물매출", "기타매출", "기타매출(금창)", "사급"],
   수출매출액: ["판매수량(수출)", "제품매출", "상품매출", "설비매출", "기타매출"],
   매출원가계: ["국내매출원가", "수출매출원가"],
   국내매출원가: ["제품", "상품", "기타"],
@@ -150,10 +139,11 @@ function barColor(v, maxAbs) {
     if (t > 0.75) return "#DC2626";
     if (t > 0.45) return "#EA580C";
     return "#FDBA74";
+  } else {
+    if (t > 0.75) return "#047857";
+    if (t > 0.45) return "#16A34A";
+    return "#86EFAC";
   }
-  if (t > 0.75) return "#047857";
-  if (t > 0.45) return "#16A34A";
-  return "#86EFAC";
 }
 
 /* =========================
@@ -283,27 +273,6 @@ function Card({ title, right, children, tone = "default" }) {
 }
 
 /* =========================
- * ✅ ESLint-safe tone helpers
- * ========================= */
-function chipToneBySignedValue(v) {
-  const t = toneForValue(v);
-  if (t === "pos") return "red";
-  if (t === "neg") return "green";
-  return "neutral";
-}
-function chipToneForSource(hasBackend, hasPath) {
-  if (hasBackend) return "blue";
-  if (hasPath) return "green";
-  return "amber";
-}
-function chipToneForImpact(impact) {
-  const a = Math.abs(safeNum(impact));
-  if (a >= 50) return safeNum(impact) >= 0 ? "red" : "green";
-  if (a >= 20) return "blue";
-  return "neutral";
-}
-
-/* =========================
  * Auto Trace
  * ========================= */
 function autoTracePath({ getChildren, getHasNext, startParts, maxDepth = 10 }) {
@@ -332,6 +301,7 @@ function autoTracePath({ getChildren, getHasNext, startParts, maxDepth = 10 }) {
  * ✅ Top “전월 대비 분석” Table
  * ========================= */
 function MetricCompareTable({ title = "전월 대비 분석", metrics = [] }) {
+  // metrics: [{ key, label, cur, prev, diff, rate }]
   return (
     <Card tone="soft" title={title} right={<Chip tone="blue">당월 / 전월 / 증감 / 증감률</Chip>}>
       <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.max(1, metrics.length)}, minmax(0, 1fr))`, gap: 10 }}>
@@ -368,31 +338,12 @@ function MetricCompareTable({ title = "전월 대비 분석", metrics = [] }) {
 }
 
 /* =========================
- * ✅ Period helpers
- * ========================= */
-function toPeriodKey(y, m) {
-  const mm = String(m).padStart(2, "0");
-  return `${y}-${mm}`;
-}
-function parsePeriodKey(key) {
-  const s = String(key || "");
-  const [yy, mm] = s.split("-");
-  const y = Number(yy);
-  const m = Number(mm);
-  if (!Number.isFinite(y) || !Number.isFinite(m)) return null;
-  return { year: y, month: m };
-}
-
-/* =========================
  * Main
  * ========================= */
 export default function PlReportCauseTab() {
   const [periods, setPeriods] = useState([]);
   const [selectedYear, setSelectedYear] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(null);
-
-  // ✅ 드롭다운용(연+월)
-  const [selectedPeriod, setSelectedPeriod] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -417,12 +368,10 @@ export default function PlReportCauseTab() {
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         const list = data.periods || [];
         setPeriods(list);
-
         if (list.length > 0) {
           const last = list[list.length - 1];
           setSelectedYear(last.year);
           setSelectedMonth(last.month);
-          setSelectedPeriod(toPeriodKey(last.year, last.month)); // ✅ 기본값: 최신월
         }
       } catch (err) {
         setError(err.message || "원인 분석 기간 목록 조회 오류");
@@ -430,15 +379,6 @@ export default function PlReportCauseTab() {
     };
     fetchPeriods();
   }, []);
-
-  // ✅ 드롭다운 변경 시 year/month 동기화
-  useEffect(() => {
-    if (!selectedPeriod) return;
-    const parsed = parsePeriodKey(selectedPeriod);
-    if (!parsed) return;
-    setSelectedYear(parsed.year);
-    setSelectedMonth(parsed.month);
-  }, [selectedPeriod]);
 
   /* cause fetch */
   useEffect(() => {
@@ -469,16 +409,21 @@ export default function PlReportCauseTab() {
     fetchCause();
   }, [selectedYear, selectedMonth]);
 
-  // ✅ 드롭다운 옵션(YYYY-MM)
-  const periodOptions = useMemo(() => {
-    return (periods || [])
-      .slice()
-      .sort((a, b) => (a.year !== b.year ? a.year - b.year : a.month - b.month))
-      .map((p) => {
-        const key = toPeriodKey(p.year, p.month);
-        return { key, label: `${p.year}-${String(p.month).padStart(2, "0")}` };
-      });
-  }, [periods]);
+  const yearOptions = useMemo(
+    () => Array.from(new Set(periods.map((p) => p.year))).sort((a, b) => a - b),
+    [periods]
+  );
+  const monthsForYear = useMemo(
+    () => periods.filter((p) => p.year === selectedYear).sort((a, b) => a.month - b.month),
+    [periods, selectedYear]
+  );
+
+  const pickYear = (y) => {
+    setSelectedYear(y);
+    const list = periods.filter((p) => p.year === y).sort((a, b) => a.month - b.month);
+    setSelectedMonth(list.length ? list[list.length - 1].month : null);
+  };
+  const pickMonth = (m) => setSelectedMonth(m);
 
   const kpiCards = causeData?.kpi_cards || [];
   const drivers = causeData?.drivers || {};
@@ -599,7 +544,7 @@ export default function PlReportCauseTab() {
     const sorted = filtered.slice().sort((a, b) => {
       if (sortMode === "impact") return Math.abs(safeNum(b.impact)) - Math.abs(safeNum(a.impact));
       if (sortMode === "rate") return Math.abs(safeNum(b.rate)) - Math.abs(safeNum(a.rate));
-      return Math.abs(safeNum(b.diff)) - Math.abs(safeNum(a.diff)));
+      return Math.abs(safeNum(b.diff)) - Math.abs(safeNum(a.diff));
     });
 
     if (showAllChildren) return sorted;
@@ -650,18 +595,16 @@ export default function PlReportCauseTab() {
       const cur = safeNum(k?.cur);
       const prev = safeNum(k?.prev);
       const diff = safeNum(k?.diff ?? (cur - prev));
-      const rate =
-        typeof k?.rate !== "undefined" && k?.rate !== null
-          ? safeNum(k.rate)
-          : prev
-          ? (diff / prev) * 100
-          : diff
-          ? 100
-          : 0;
+      const rate = typeof k?.rate !== "undefined" && k?.rate !== null ? safeNum(k.rate) : prev ? (diff / prev) * 100 : diff ? 100 : 0;
       return { key: name, label, cur, prev, diff, rate };
     };
 
-    return [pick("판매비와일반관리비", "당월/전월 영업비용"), pick("매출원가계", "당월/전월 매출원가"), pick("매출액", "당월/전월 매출액")];
+    // 이미지 표 구조(3열): 영업비용 / 매출원가 / 매출액
+    return [
+      pick("판매비와일반관리비", "당월/전월 영업비용"),
+      pick("매출원가계", "당월/전월 매출원가"),
+      pick("매출액", "당월/전월 매출액"),
+    ];
   }, [kpiMap]);
 
   // ✅ 드릴다운 Breadcrumb 점프
@@ -674,7 +617,7 @@ export default function PlReportCauseTab() {
     setSortMode("absdiff");
   };
 
-  // ✅ “비용 중심” 바로가기
+  // ✅ “비용 중심” 바로가기 (원하면 여기서 더 늘려도 됨)
   const focusOnOpex = () => {
     setActiveKpi("영업이익");
     setAutoTrace(null);
@@ -685,63 +628,46 @@ export default function PlReportCauseTab() {
     setSortMode("absdiff");
   };
 
-  // ✅ Month 드롭다운 UI(대시보드 우측 상단 pill 느낌)
-  const MonthSelect = (
-    <select
-      value={selectedPeriod || ""}
-      onChange={(e) => setSelectedPeriod(e.target.value)}
-      style={{
-        height: 34,
-        padding: "0 12px",
-        borderRadius: 999,
-        border: "1px solid #E5E7EB",
-        background: "#FFFFFF",
-        color: "#111827",
-        fontWeight: 900,
-        fontSize: 12,
-        outline: "none",
-        cursor: "pointer",
-      }}
-    >
-      {periodOptions.map((p) => (
-        <option key={p.key} value={p.key}>
-          Month: {p.label}
-        </option>
-      ))}
-    </select>
-  );
-
   return (
     <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* ✅ 상단 헤더: 연/월 버튼 제거 + Month 드롭다운만 */}
+      {/* ✅ 상단 헤더 + 연/월 버튼 선택 */}
       <Card
         title="P&L 원인 분석"
         right={
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {MonthSelect}
-
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             <Chip tone={depthTone} title="items/all_items가 있으면 leaf까지 드릴다운이 깊어집니다.">
               depth: {dataDepth}
             </Chip>
-
             <Button tone="outline" onClick={focusOnOpex} title="영업비용(판관비)부터 바로 드릴다운">
               비용 중심 보기
             </Button>
           </div>
         }
       >
+        {/* 연도 버튼 */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+          {yearOptions.map((y) => (
+            <Button key={y} tone={selectedYear === y ? "solid" : "ghost"} onClick={() => pickYear(y)}>
+              {y}년
+            </Button>
+          ))}
+        </div>
+
+        {/* 월 버튼 */}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {monthsForYear.map((p) => (
+            <Button
+              key={`${p.year}-${p.month}`}
+              tone={selectedMonth === p.month ? "solid" : "ghost"}
+              onClick={() => pickMonth(p.month)}
+            >
+              {String(p.month).padStart(2, "0")}월
+            </Button>
+          ))}
+        </div>
+
         {/* 기간 라벨 */}
-        <div
-          style={{
-            marginTop: 2,
-            fontSize: 12,
-            color: UI.subText,
-            lineHeight: 1.6,
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
+        <div style={{ marginTop: 10, fontSize: 12, color: UI.subText, lineHeight: 1.6, display: "flex", gap: 8, flexWrap: "wrap" }}>
           {causeData?.current_period && <Chip tone="dark">현재: {causeData.current_period.label}</Chip>}
           {causeData?.previous_period && <Chip tone="neutral">전월: {causeData.previous_period.label}</Chip>}
           <Chip tone="blue">KPI → Driver → Drilldown → (Impact/Rate)</Chip>
@@ -757,7 +683,7 @@ export default function PlReportCauseTab() {
 
           {!loading && !error && causeData && (
             <>
-              {/* ✅ 전월 대비 분석 */}
+              {/* ✅ 이미지 표 형태: 전월 대비 분석 */}
               <MetricCompareTable title="전월 대비 분석" metrics={topCompareMetrics} />
 
               {/* KPI Cards */}
@@ -816,8 +742,6 @@ export default function PlReportCauseTab() {
                         const diff = safeNum(c.diff);
                         const rate = prev ? (diff / prev) * 100 : diff ? 100 : 0;
 
-                        const contribTone = chipToneBySignedValue(c.contrib);
-
                         return (
                           <div
                             key={c.component}
@@ -843,7 +767,9 @@ export default function PlReportCauseTab() {
                                 <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.component}</span>
                                 <span style={{ marginLeft: 8, fontSize: 11, color: UI.subText }}>(기여 {formatSignedNumber(safeNum(c.contrib))})</span>
                               </div>
-                              <Chip tone={contribTone}>{formatSignedNumber(safeNum(c.contrib))}</Chip>
+                              <Chip tone={toneForValue(c.contrib) === "pos" ? "red" : toneForValue(c.contrib) === "neg" ? "green" : "neutral"}>
+                                {formatSignedNumber(safeNum(c.contrib))}
+                              </Chip>
                             </div>
 
                             <div style={{ marginTop: 8 }}>
@@ -872,19 +798,22 @@ export default function PlReportCauseTab() {
                     right={
                       drillStack.length ? (
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-                          {(() => {
-                            const lastLabel = drillStack[drillStack.length - 1].label;
-                            const hasBackend = !!(backendDrilldowns?.[lastLabel]?.length);
-                            const hasPath = flatItems.length > 0;
-                            const srcTone = chipToneForSource(hasBackend, hasPath);
-                            const srcText = hasBackend ? "backend" : hasPath ? "path" : "-";
-
-                            return (
-                              <Chip tone={srcTone}>
-                                source: {srcText}
-                              </Chip>
-                            );
-                          })()}
+                          <Chip
+                            tone={
+                              backendDrilldowns?.[drillStack[drillStack.length - 1].label]?.length
+                                ? "blue"
+                                : flatItems.length
+                                ? "green"
+                                : "amber"
+                            }
+                          >
+                            source:{" "}
+                            {backendDrilldowns?.[drillStack[drillStack.length - 1].label]?.length
+                              ? "backend"
+                              : flatItems.length
+                              ? "path"
+                              : "-"}
+                          </Chip>
 
                           <Button
                             tone="ghost"
@@ -1028,8 +957,9 @@ export default function PlReportCauseTab() {
                             const hasNext = getHasNext(nextParts);
 
                             const impact = safeNum(x.impact);
-                            const signTone = chipToneBySignedValue(x.diff);
-                            const impactTone = chipToneForImpact(impact);
+                            const signTone = toneForValue(x.diff) === "pos" ? "red" : toneForValue(x.diff) === "neg" ? "green" : "neutral";
+                            const impactTone =
+                              Math.abs(impact) >= 50 ? (impact >= 0 ? "red" : "green") : Math.abs(impact) >= 20 ? "blue" : "neutral";
 
                             return (
                               <div
@@ -1053,16 +983,7 @@ export default function PlReportCauseTab() {
                               >
                                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
                                   <div style={{ display: "flex", gap: 8, alignItems: "baseline", minWidth: 0 }}>
-                                    <div
-                                      style={{
-                                        fontSize: 12,
-                                        fontWeight: 950,
-                                        color: UI.text,
-                                        whiteSpace: "nowrap",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                      }}
-                                    >
+                                    <div style={{ fontSize: 12, fontWeight: 950, color: UI.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                                       {x.name}
                                     </div>
                                     {hasNext ? <Chip tone="dark">drill</Chip> : <Chip tone="neutral">leaf</Chip>}
@@ -1149,16 +1070,7 @@ export default function PlReportCauseTab() {
                                 return (
                                   <div key={name} style={{ border: UI.border, borderRadius: UI.radius, padding: 12, background: UI.bgSoft }}>
                                     <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                                      <div
-                                        style={{
-                                          fontWeight: 950,
-                                          minWidth: 0,
-                                          whiteSpace: "nowrap",
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                          color: UI.text,
-                                        }}
-                                      >
+                                      <div style={{ fontWeight: 950, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", color: UI.text }}>
                                         {name}
                                       </div>
                                       {curKpi ? (
@@ -1173,8 +1085,7 @@ export default function PlReportCauseTab() {
                                     <div style={{ marginTop: 10, fontSize: 12, color: UI.text, lineHeight: 1.6 }}>
                                       {topDriver ? (
                                         <>
-                                          이 조건에서 <b>{activeKpi}</b> 핵심은 <b>{topDriver.component}</b>, 기여{" "}
-                                          <b>{formatSignedNumber(safeNum(topDriver.contrib))}</b>
+                                          이 조건에서 <b>{activeKpi}</b> 핵심은 <b>{topDriver.component}</b>, 기여 <b>{formatSignedNumber(safeNum(topDriver.contrib))}</b>
                                         </>
                                       ) : (
                                         <>Driver 정보가 없습니다. (조건별 drivers 필요)</>

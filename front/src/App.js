@@ -1442,9 +1442,9 @@ function App() {
       desc: "결산 보고서",
       icon: iconDoc,
       children: [
-        { id: "pl_basic", label: "기본", desc: "표/요약" },
-        { id: "pl_advanced", label: "심화", desc: "원인 분석" },
-      ],
+        { id: "pl-report-basic", label: "기본", desc: "표/요약" },
+        { id: "pl-report-cause", label: "심화", desc: "원인 분석" },
+  ],
     },
     {
       id: "forecast",
