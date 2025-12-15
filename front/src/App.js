@@ -208,6 +208,7 @@ function App() {
           setAnomalyError(null);
           setInitProgress(60);
 
+          const res2 = await fetch(`${API_BASE}/api/cost-center/analyze-default`);
 
           if (!res2.ok) {
             const msg = `analyze-default HTTP ${res2.status}`;
