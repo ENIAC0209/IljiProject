@@ -79,6 +79,7 @@ function App() {
   // ==============================
   // 상태/데이터
   // ==============================
+
   const [plReportData, setPlReportData] = useState([]); // /api/pl-report fetch 결과
 
   const [anomalyResult, setAnomalyResult] = useState(null);
@@ -99,6 +100,10 @@ function App() {
 
   // ✅ 주제3: 코드분류표 매핑
   const [codeNameMap, setCodeNameMap] = useState({});
+
+  // ✅ (추가) 심화분류 맵(백엔드에서 내려받음)
+  const [advancedByCcAcc, setAdvancedByCcAcc] = useState({});
+  const [advancedByAcc, setAdvancedByAcc] = useState({});
 
   // ✅ 주제3/4: 백엔드에 back-data 업로드 1회만 방지용
   const [plReportRequested, setPlReportRequested] = useState(false);
@@ -184,6 +189,15 @@ function App() {
           setAnomalyData(data.anomalyData);
         }
 
+        // ✅ (추가) 백엔드에서 심화분류 맵 받기
+        if (data.advancedMap) {
+          setAdvancedByCcAcc(data.advancedMap.byCcAcc || {});
+          setAdvancedByAcc(data.advancedMap.byAcc || {});
+        } else {
+          setAdvancedByCcAcc({});
+          setAdvancedByAcc({});
+        }
+
         // ✅ 기본 분석 호출
         try {
           if (!mounted) return;
@@ -246,7 +260,7 @@ function App() {
           }
         }
 
-        // ✅ 핵심: 여기서 landing -> app 전환 (이게 없어서 로딩이 안 끝났음)
+        // ✅ landing -> app 전환
         if (mounted) {
           setInitProgress(100);
           setStage("app");
@@ -1320,16 +1334,14 @@ function App() {
       icon: iconSignal,
     },
     {
-      id: "pl-report-basic",
+      id: "pl_group",
       label: "P&L Report",
-      desc: "결산 보고서(기본)",
+      desc: "결산 보고서",
       icon: iconDoc,
-    },
-    {
-      id: "pl-report-cause",
-      label: "P&L Report 심화",
-      desc: "원인 분석(심화)",
-      icon: iconChart,
+      children: [
+        { id: "pl_basic", label: "기본", desc: "표/요약" },
+        { id: "pl_advanced", label: "심화", desc: "원인 분석" },
+      ],
     },
     {
       id: "forecast",
@@ -1339,7 +1351,23 @@ function App() {
     },
   ];
 
-  const currentMenu = sideMenus.find((m) => m.id === tab);
+  const currentMenu = useMemo(() => {
+    const direct = sideMenus.find((m) => m.id === tab);
+    if (direct) return direct;
+
+    for (const m of sideMenus) {
+      const kids = Array.isArray(m.children) ? m.children : [];
+      const child = kids.find((c) => c.id === tab);
+      if (child) {
+        return {
+          ...m,
+          label: `${m.label} / ${child.label}`,
+          desc: child.desc || m.desc,
+        };
+      }
+    }
+    return null;
+  }, [sideMenus, tab]);
 
   // 업로드 아이콘 상태: idle / pending / uploading / uploaded
   const costIconStatus = costUploading
@@ -1349,7 +1377,6 @@ function App() {
     : costDataUploaded
     ? "uploaded"
     : "idle";
-
   const plIconStatus = plUploading
     ? "uploading"
     : pendingPlFile
@@ -1382,7 +1409,6 @@ function App() {
   // 렌더링 분기
   // =====================================================
 
-  // 1) 로그인 안됐으면 LoginPage
   if (!isLoggedIn) {
     return (
       <LoginPage
@@ -1402,7 +1428,6 @@ function App() {
     );
   }
 
-  // 2) landing / error 화면
   if (stage === "landing") {
     return (
       <div
@@ -1610,7 +1635,7 @@ function App() {
         onChange={handleUploadPlFile}
       />
 
-      {/* ✅ 왼쪽 아이콘 열 (분리됨) */}
+      {/* ✅ 왼쪽 아이콘 열 */}
       <SidebarIcons
         sideMenus={sideMenus}
         tab={tab}
@@ -1640,7 +1665,7 @@ function App() {
         }}
       />
 
-      {/* ✅ 오른쪽 설명/업로드 패널 (분리됨) */}
+      {/* ✅ 오른쪽 설명/업로드 패널 */}
       <SidebarPanel
         sideMenus={sideMenus}
         tab={tab}
@@ -1913,6 +1938,9 @@ function App() {
             selectedMonth={selectedMonth}
             setSelectedMonth={setSelectedMonth}
             closingKpi={{ month: selectedMonth, ...kpi }}
+            // ✅ (추가) 백엔드 심화분류 맵 전달
+            advancedByCcAcc={advancedByCcAcc}
+            advancedByAcc={advancedByAcc}
           />
         )}
 
@@ -1931,7 +1959,7 @@ function App() {
           />
         )}
 
-        {tab === "pl-report-basic" && (
+        {tab === "pl_basic" && (
           <PlReportTab
             plDetailTab={plDetailTab}
             setPlDetailTab={setPlDetailTab}
@@ -1954,7 +1982,7 @@ function App() {
           />
         )}
 
-        {tab === "pl-report-cause" && <PlReportCauseTab />}
+        {tab === "pl_advanced" && <PlReportCauseTab />}
 
         {tab === "forecast" && <ForecastTab cardStyle={cardStyle} />}
       </main>

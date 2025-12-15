@@ -1,10 +1,9 @@
 // =========================
 // src/components/tabs/ClosingTab.js  (MODIFIED FULL)
-// - 서버(app.py)의 reason_summary / reason_kor / reason_tags를 그대로 활용
-// - 프론트 fallback 요약도 포함
-// - ✅ 리스트 "사유(요약)"는 무조건 20자 이내로 표시
-// - 상세는 reasonFull(원문) 그대로 표시
-// - ✅ 탭/필터 변경 시 리스트 스크롤 위치 고정
+// - ✅ advancedMap(backend) 기반 심화분류 표시
+// - ✅ (코스트센터|계정코드) 우선 + 계정코드 fallback
+// - ✅ "심화분류" 컬럼(고정비/변동비/시즌/이벤트성) 추가
+// - ✅ 코스트센터/계정별 이슈 리스트: 한 행이 2줄로 내려가지 않게(모든 셀 1줄 + 말줄임)
 // =========================
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { BRAND_DARK, BRAND_GREEN, BRAND_ORANGE } from "../../config/plConfig";
@@ -21,18 +20,45 @@ import {
 
 // -------------------------
 // ✅ 20자 이내로 자르기(리스트용)
-// - 한글/영문 모두 "문자 수" 기준
 // -------------------------
-const clamp20 = (text) => {
+const clampN = (text, n = 50) => {
   const s = String(text ?? "")
     .replace(/\s+/g, " ")
     .trim();
   if (!s) return "-";
-  if (s.length <= 20) return s;
-  return s.slice(0, 19).trimEnd() + "…";
+  if (s.length <= n) return s;
+  return s.slice(0, n - 1).trimEnd() + "…";
 };
 
+// -------------------------
+// ✅ 심화분류 정규화 (표기 통일)
+// - 원하는 출력: 고정비 / 변동비 / 시즌/이벤트성
+// -------------------------
+const normalizeAdvanced = (v) => {
+  const s = String(v || "").trim();
+  if (!s) return "";
+
+  // 시즌/이벤트성 표기 통일
+  if (s === "시즌/이벤트") return "시즌/이벤트성";
+  if (s === "시즌" || s === "이벤트" || s === "시즌성") return "시즌/이벤트성";
+  if (s === "시즌·이벤트성") return "시즌/이벤트성";
+  if (s === "시즌/이벤트성") return "시즌/이벤트성";
+
+  // 고정비/변동비는 그대로
+  if (s === "고정비") return "고정비";
+  if (s === "변동비") return "변동비";
+
+  // 다른 표현 방어
+  if (/고정/.test(s)) return "고정비";
+  if (/변동/.test(s)) return "변동비";
+  if (/시즌|이벤트/.test(s)) return "시즌/이벤트성";
+
+  return "";
+};
+
+// -------------------------
 // 상태 뱃지
+// -------------------------
 const StatusBadge = ({ status }) => {
   let bg = "#e5e7eb";
   let txt = "#374151";
@@ -70,8 +96,46 @@ const StatusBadge = ({ status }) => {
 };
 
 // -------------------------
+// ✅ 심화분류 배지
+// -------------------------
+const AdvancedBadge = ({ cls }) => {
+  const c = normalizeAdvanced(cls);
+  if (!c) return null;
+
+  let bg = "rgba(107,114,128,0.10)";
+  let txt = "#374151";
+
+  if (c === "고정비") {
+    bg = "rgba(16, 185, 129, 0.12)";
+    txt = "#047857";
+  } else if (c === "변동비") {
+    bg = "rgba(59, 130, 246, 0.10)";
+    txt = "#1d4ed8";
+  } else if (c === "시즌/이벤트성") {
+    bg = "rgba(245, 158, 11, 0.12)";
+    txt = "#92400e";
+  }
+
+  return (
+    <span
+      style={{
+        fontSize: 10,
+        padding: "2px 6px",
+        borderRadius: 999,
+        backgroundColor: bg,
+        color: txt,
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+      }}
+      title={`분류: ${c}`}
+    >
+      {c}
+    </span>
+  );
+};
+
+// -------------------------
 // ✅ 사유 요약 생성 (프론트 fallback)
-// - 서버 _summarize_reason 규칙을 최대한 존중 + 더 짧게(20자 제한은 clamp20에서 강제)
 // -------------------------
 const summarizeReasonFallback = (reason, reasonTags, displayIssueType) => {
   const s = String(reason || "")
@@ -79,7 +143,6 @@ const summarizeReasonFallback = (reason, reasonTags, displayIssueType) => {
     .replace(/원가/g, "원과")
     .trim();
 
-  // 1) 태그가 있으면 태그 1~2개를 우선
   const tags = Array.isArray(reasonTags)
     ? reasonTags.map((x) => String(x).trim()).filter(Boolean)
     : String(reasonTags || "")
@@ -89,12 +152,10 @@ const summarizeReasonFallback = (reason, reasonTags, displayIssueType) => {
 
   if (tags.length) return tags.slice(0, 2).join("·");
 
-  // 2) 결측/비어있음 류
   if (s.includes("금액이 비어") || s.includes("결측") || s.includes("공백")) {
     return "금액 비어있음";
   }
 
-  // 3) "과거에 금액이 존재했으나 이번 달은 0..." 류
   if (s.includes("과거에 금액이 존재")) {
     const has3 = /직전\s*3개월/.test(s);
     const has12 = /직전\s*12개월/.test(s) || /최근\s*12개월/.test(s);
@@ -103,7 +164,31 @@ const summarizeReasonFallback = (reason, reasonTags, displayIssueType) => {
     return "과거 금액 존재";
   }
 
-  // 4) 전월 대비 % 변화만 뽑기
+  // ✅ 신규(백엔드 최신 문구) 파싱
+  // - 최근 3개월/12개월 중 유효값이 있습니다/없습니다
+  if (/최근\s*3개월\s*중\s*유효값이\s*(있습니다|없습니다)/.test(s)) {
+    return s.match(/최근\s*3개월\s*중\s*유효값이\s*(있습니다|없습니다)/)[0];
+  }
+  if (/최근\s*12개월\s*중\s*유효값이\s*(있습니다|없습니다)/.test(s)) {
+    return s.match(/최근\s*12개월\s*중\s*유효값이\s*(있습니다|없습니다)/)[0];
+  }
+
+  // ✅ 구버전(O/X) 문구도 방어 (혹시 캐시/예전 데이터 섞일 때)
+  if (/직전\s*3개월\s*유효값\s*[OX]/.test(s)) {
+    return s
+      .match(/직전\s*3개월\s*유효값\s*[OX]/)[0]
+      .replace("직전", "최근")
+      .replace("유효값 O", "유효값이 있습니다")
+      .replace("유효값 X", "유효값이 없습니다");
+  }
+  if (/직전\s*12개월\s*유효값\s*[OX]/.test(s)) {
+    return s
+      .match(/직전\s*12개월\s*유효값\s*[OX]/)[0]
+      .replace("직전", "최근")
+      .replace("유효값 O", "유효값이 있습니다")
+      .replace("유효값 X", "유효값이 없습니다");
+  }
+
   const pct = s.match(
     /전월[^%]*대비[^%]*([+\-]?\d+(?:\.\d+)?)%\s*(증가|감소)?/
   );
@@ -116,7 +201,6 @@ const summarizeReasonFallback = (reason, reasonTags, displayIssueType) => {
     }
   }
 
-  // 5) 그래도 없으면 타입+첫 문장 앞부분
   const base = String(displayIssueType || "").trim() || "이슈";
   if (!s) return base;
   const first = s.split(" / ")[0].split("\n")[0].trim();
@@ -132,6 +216,10 @@ export default function ClosingTab({
   onIssueRowClick,
   cardStyle,
   closingKpi,
+
+  // ✅ 백엔드에서 받은 맵
+  advancedByCcAcc = {},
+  advancedByAcc = {},
 }) {
   const rows = closingAnalysis?.rows || [];
   const hasBackend = !!(anomalyResult && anomalyResult.summary);
@@ -209,17 +297,6 @@ export default function ClosingTab({
     boxShadow: enabled ? "0 1px 2px rgba(0,0,0,0.08)" : "none",
   });
 
-  const tabBaseStyle = {
-    padding: "2px 8px",
-    borderRadius: 999,
-    border: "1px solid #e5e7eb",
-    backgroundColor: "#f9fafb",
-    color: "#4b5563",
-    fontSize: 10,
-    fontWeight: 500,
-    cursor: "pointer",
-  };
-
   const historyMap = useMemo(() => {
     if (hasBackend && anomalyResult.history) return anomalyResult.history;
     return closingAnalysis?.history || {};
@@ -249,7 +326,7 @@ export default function ClosingTab({
       if (amountNum === 0 || amountNum === null) status = "issue";
 
       const costCenterCode =
-        r.cost_center || r.cc || r.costCenter || r.costCenterCode;
+        r.cost_center || r.cc || r.costCenter || r.costCenterCode || "";
       const costCenterName =
         r.cc_name || r.costCenterName || costCenterCode || "-";
       const accountCode = r.account_code || r.accountCode || r.acc_code || "-";
@@ -286,7 +363,17 @@ export default function ClosingTab({
         r.reason_summary ||
         summarizeReasonFallback(reasonFull, reasonTags, displayIssueType);
 
-      const reasonSummary = clamp20(reasonSummaryRaw);
+      const reasonSummary = clampN(reasonSummaryRaw);
+
+      // ✅ 심화분류: (코스트센터|계정) 우선 → 계정 fallback
+      const accKey = String(accountCode || "").trim();
+      const ccKey = String(costCenterCode || "").trim();
+      const ccAccKey = ccKey && accKey ? `${ccKey}|${accKey}` : "";
+
+      const advancedClass =
+        (ccAccKey && advancedByCcAcc?.[ccAccKey]) ||
+        advancedByAcc?.[accKey] ||
+        "";
 
       return {
         id: r.id || idx + 1,
@@ -295,9 +382,10 @@ export default function ClosingTab({
         month,
         costCenter: costCenterCode,
         costCenterName,
-        accountCode,
+        accountCode: accKey || "-",
         accountName:
           r.account_name || r.accountName || r.acc_name || "(계정명 없음)",
+        advancedClass,
         amount: amountNum || 0,
         status,
         reviewed: isReviewed,
@@ -322,7 +410,15 @@ export default function ClosingTab({
       );
     }
     return mapped;
-  }, [hasBackend, anomalyResult, rows, reviewedMap, pendingMap]);
+  }, [
+    hasBackend,
+    anomalyResult,
+    rows,
+    reviewedMap,
+    pendingMap,
+    advancedByCcAcc,
+    advancedByAcc,
+  ]);
 
   const filteredIssueRows = useMemo(() => {
     if (!issueRows.length) return [];
@@ -519,6 +615,15 @@ export default function ClosingTab({
     zIndex: 2,
     backgroundColor: "#f9fafb",
     borderBottom: "1px solid #e5e7eb",
+  };
+
+  // ✅ (추가) 이슈 리스트 표: 모든 셀 한 줄 고정 + 말줄임
+  const tdNoWrap = {
+    padding: "3px 6px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    verticalAlign: "middle",
   };
 
   return (
@@ -779,14 +884,15 @@ export default function ClosingTab({
               <button
                 onClick={() => setViewMode("issues")}
                 style={{
-                  ...tabBaseStyle,
-                  ...(viewMode === "issues"
-                    ? {
-                        backgroundColor: "#111827",
-                        borderColor: "#111827",
-                        color: "#ffffff",
-                      }
-                    : {}),
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  border: "1px solid #e5e7eb",
+                  backgroundColor:
+                    viewMode === "issues" ? "#111827" : "#f9fafb",
+                  color: viewMode === "issues" ? "#ffffff" : "#4b5563",
+                  fontSize: 10,
+                  fontWeight: 500,
+                  cursor: "pointer",
                 }}
               >
                 이슈
@@ -794,14 +900,15 @@ export default function ClosingTab({
               <button
                 onClick={() => setViewMode("reviewed")}
                 style={{
-                  ...tabBaseStyle,
-                  ...(viewMode === "reviewed"
-                    ? {
-                        backgroundColor: "#111827",
-                        borderColor: "#111827",
-                        color: "#ffffff",
-                      }
-                    : {}),
+                  padding: "2px 8px",
+                  borderRadius: 999,
+                  border: "1px solid #e5e7eb",
+                  backgroundColor:
+                    viewMode === "reviewed" ? "#111827" : "#f9fafb",
+                  color: viewMode === "reviewed" ? "#ffffff" : "#4b5563",
+                  fontSize: 10,
+                  fontWeight: 500,
+                  cursor: "pointer",
                 }}
               >
                 검증완료
@@ -877,13 +984,11 @@ export default function ClosingTab({
                 : "확인 처리된 항목이 없습니다."}
             </div>
           ) : (
-            // ✅ 여기가 핵심: ref + onScroll 추가
             <div
               ref={listScrollRef}
               onScroll={() => {
-                if (listScrollRef.current) {
+                if (listScrollRef.current)
                   scrollTopRef.current = listScrollRef.current.scrollTop;
-                }
               }}
               style={{ flex: 1, minHeight: 0, overflow: "auto" }}
             >
@@ -892,17 +997,27 @@ export default function ClosingTab({
                   width: "100%",
                   borderCollapse: "collapse",
                   fontSize: 10,
+                  tableLayout: "fixed", // ✅ 폭 고정 → 줄바꿈 대신 말줄임
                 }}
               >
+                {/* ✅ 컬럼 폭 지정 (사유(요약) 더 길게) */}
+                <colgroup>
+                  <col style={{ width: 52 }} /> {/* 상태 (56→52) */}
+                  <col style={{ width: 60 }} /> {/* 기준월 (64→60) */}
+                  <col style={{ width: 110 }} /> {/* 코스트센터 (120→110) */}
+                  <col style={{ width: 64 }} /> {/* 계정코드 (70→64) */}
+                  <col style={{ width: 120 }} /> {/* 계정명 (140→120) */}
+                  <col style={{ width: 70 }} /> {/* 분류 (84→70) */}
+                  <col style={{ width: 86 }} /> {/* 금액 (90→86) */}
+                  <col style={{ width: 260 }} /> {/* ✅ 사유(요약) (170→260) */}
+                  <col style={{ width: 50 }} /> {/* 확인 (54→50) */}
+                </colgroup>
+
                 <thead>
                   <tr>
                     <th
                       style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: "#f9fafb",
-                        borderBottom: "1px solid #e5e7eb",
+                        ...stickyTh,
                         textAlign: "left",
                         padding: "4px 6px",
                       }}
@@ -911,11 +1026,7 @@ export default function ClosingTab({
                     </th>
                     <th
                       style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: "#f9fafb",
-                        borderBottom: "1px solid #e5e7eb",
+                        ...stickyTh,
                         textAlign: "left",
                         padding: "4px 6px",
                       }}
@@ -924,11 +1035,7 @@ export default function ClosingTab({
                     </th>
                     <th
                       style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: "#f9fafb",
-                        borderBottom: "1px solid #e5e7eb",
+                        ...stickyTh,
                         textAlign: "left",
                         padding: "4px 6px",
                       }}
@@ -937,11 +1044,7 @@ export default function ClosingTab({
                     </th>
                     <th
                       style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: "#f9fafb",
-                        borderBottom: "1px solid #e5e7eb",
+                        ...stickyTh,
                         textAlign: "left",
                         padding: "4px 6px",
                       }}
@@ -950,11 +1053,7 @@ export default function ClosingTab({
                     </th>
                     <th
                       style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: "#f9fafb",
-                        borderBottom: "1px solid #e5e7eb",
+                        ...stickyTh,
                         textAlign: "left",
                         padding: "4px 6px",
                       }}
@@ -963,11 +1062,16 @@ export default function ClosingTab({
                     </th>
                     <th
                       style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: "#f9fafb",
-                        borderBottom: "1px solid #e5e7eb",
+                        ...stickyTh,
+                        textAlign: "center",
+                        padding: "4px 6px",
+                      }}
+                    >
+                      분류
+                    </th>
+                    <th
+                      style={{
+                        ...stickyTh,
                         textAlign: "right",
                         padding: "4px 6px",
                       }}
@@ -976,11 +1080,7 @@ export default function ClosingTab({
                     </th>
                     <th
                       style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: "#f9fafb",
-                        borderBottom: "1px solid #e5e7eb",
+                        ...stickyTh,
                         textAlign: "left",
                         padding: "4px 6px",
                       }}
@@ -989,11 +1089,7 @@ export default function ClosingTab({
                     </th>
                     <th
                       style={{
-                        position: "sticky",
-                        top: 0,
-                        zIndex: 2,
-                        backgroundColor: "#f9fafb",
-                        borderBottom: "1px solid #e5e7eb",
+                        ...stickyTh,
                         textAlign: "center",
                         padding: "4px 6px",
                       }}
@@ -1023,6 +1119,7 @@ export default function ClosingTab({
                 <tbody>
                   {tableRows.map((r) => {
                     const active = selectedIssue && selectedIssue.id === r.id;
+
                     return (
                       <tr
                         key={r.id}
@@ -1033,37 +1130,52 @@ export default function ClosingTab({
                           borderBottom: "1px solid #f3f4f6",
                         }}
                       >
-                        <td style={{ padding: "3px 6px" }}>
+                        <td style={tdNoWrap}>
                           <StatusBadge status={r.status} />
                         </td>
-                        <td style={{ padding: "3px 6px" }}>{r.month}</td>
-                        <td style={{ padding: "3px 6px" }}>
+
+                        <td style={tdNoWrap} title={r.month || ""}>
+                          {r.month}
+                        </td>
+
+                        <td
+                          style={tdNoWrap}
+                          title={r.costCenterName || r.costCenter || "-"}
+                        >
                           {r.costCenterName || r.costCenter || "-"}
                         </td>
-                        <td style={{ padding: "3px 6px" }}>{r.accountCode}</td>
-                        <td style={{ padding: "3px 6px", fontWeight: 500 }}>
+
+                        <td style={tdNoWrap} title={r.accountCode || ""}>
+                          {r.accountCode}
+                        </td>
+
+                        <td
+                          style={{ ...tdNoWrap, fontWeight: 500 }}
+                          title={r.accountName || "(계정명 없음)"}
+                        >
                           {r.accountName || "(계정명 없음)"}
                         </td>
-                        <td style={{ padding: "3px 6px", textAlign: "right" }}>
+
+                        <td style={{ ...tdNoWrap, textAlign: "center" }}>
+                          <AdvancedBadge cls={r.advancedClass} />
+                        </td>
+
+                        <td
+                          style={{ ...tdNoWrap, textAlign: "right" }}
+                          title={String(Math.round(r.amount || 0))}
+                        >
                           {Math.round(r.amount || 0).toLocaleString("ko-KR")}
                         </td>
 
                         <td
-                          style={{
-                            padding: "3px 6px",
-                            maxWidth: 180,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            fontSize: 10,
-                          }}
+                          style={{ ...tdNoWrap, fontSize: 10 }}
                           title={r.reasonFull || ""}
                         >
                           {r.reasonSummary || "-"}
                         </td>
 
                         <td
-                          style={{ padding: "3px 6px", textAlign: "center" }}
+                          style={{ ...tdNoWrap, textAlign: "center" }}
                           onClick={(e) => e.stopPropagation()}
                         >
                           {viewMode === "issues" ? (
@@ -1150,13 +1262,24 @@ export default function ClosingTab({
                 <div style={{ minWidth: 0 }}>
                   <div
                     style={{
-                      fontSize: 12,
-                      fontWeight: 700,
-                      lineHeight: "16px",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      minWidth: 0,
                     }}
                   >
-                    {selectedIssue.accountName || "(계정명 없음)"}
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        lineHeight: "16px",
+                      }}
+                    >
+                      {selectedIssue.accountName || "(계정명 없음)"}
+                    </div>
+                    <AdvancedBadge cls={selectedIssue.advancedClass} />
                   </div>
+
                   <div
                     style={{
                       fontSize: 11,
@@ -1180,7 +1303,7 @@ export default function ClosingTab({
                   </div>
                 </div>
 
-                {/* 우측: 상태/기준월 (요청대로 오른쪽에) */}
+                {/* 우측: 상태/기준월 */}
                 <div
                   style={{
                     display: "flex",
@@ -1211,7 +1334,7 @@ export default function ClosingTab({
                 </div>
               </div>
 
-              {/* 상세 사유(원문) - 너무 길면 차트 비중 먹어서 높이 제한 */}
+              {/* 상세 사유(원문) */}
               <div
                 style={{
                   border: "1px solid #e5e7eb",
@@ -1275,10 +1398,9 @@ export default function ClosingTab({
                     minHeight: 0,
                   }}
                 >
-                  {/* ✅ 차트 크게 */}
                   <div
                     style={{
-                      height: 230, // ✅ 135 -> 230
+                      height: 230,
                       borderRadius: 8,
                       border: "1px solid #e5e7eb",
                       backgroundColor: "#f9fafb",
@@ -1376,6 +1498,7 @@ export default function ClosingTab({
               )}
             </>
           )}
+
           {/* 전월/선택월 금액 (컴팩트 바) */}
           <div
             style={{
