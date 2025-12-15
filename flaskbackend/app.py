@@ -31,6 +31,7 @@ import numpy as np
 USE_DB_AUTH = False  # ✅ 기본: 데모 모드
 # USE_DB_AUTH = True  # ✅ DB 모드
 
+
 # =========================
 # 🔥 모듈 경로 강제 추가 (중요)
 # =========================
