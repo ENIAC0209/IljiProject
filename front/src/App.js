@@ -77,9 +77,10 @@ function App() {
   const [theme, setTheme] = useState("light");
 
   // ==============================
-  // 상태/데이터 (기존 유지 + 주제3~4 필요한 것 추가)
+  // 상태/데이터
   // ==============================
-  const [plReportData, setPlReportData] = useState([]); // 기존 /api/pl-report fetch 결과 (유지)
+
+  const [plReportData, setPlReportData] = useState([]); // /api/pl-report fetch 결과
 
   const [anomalyResult, setAnomalyResult] = useState(null);
   const [anomalyLoading, setAnomalyLoading] = useState(false);
@@ -99,6 +100,10 @@ function App() {
 
   // ✅ 주제3: 코드분류표 매핑
   const [codeNameMap, setCodeNameMap] = useState({});
+
+  // ✅ (추가) 심화분류 맵(백엔드에서 내려받음)
+  const [advancedByCcAcc, setAdvancedByCcAcc] = useState({});
+  const [advancedByAcc, setAdvancedByAcc] = useState({});
 
   // ✅ 주제3/4: 백엔드에 back-data 업로드 1회만 방지용
   const [plReportRequested, setPlReportRequested] = useState(false);
@@ -152,7 +157,7 @@ function App() {
   }, [anomalyData]);
 
   // ==========================
-  // 백엔드에서 초기 데이터 불러오기 (기존 유지)
+  // ✅ 백엔드 초기 데이터 로드 + default 분석 + stage 전환
   // ==========================
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -163,6 +168,7 @@ function App() {
       try {
         if (!mounted) return;
 
+        setStage("landing");
         setInitProgress(10);
 
         const res = await fetch(`${API_BASE}/api/init-data`);
@@ -183,12 +189,10 @@ function App() {
 
         if (Array.isArray(data.costData) && data.costData.length) {
           setCostData(data.costData);
-          // ❌ setCostDataUploaded(true);  // 제거: 초기 로딩은 업로드로 치지 않음
         }
 
         if (Array.isArray(data.backData) && data.backData.length) {
           setBackData(data.backData);
-          // ❌ setPlDataUploaded(true);    // 제거: 초기 로딩은 업로드로 치지 않음
         }
 
         if (data.codeNameMap && Object.keys(data.codeNameMap).length > 0) {
@@ -197,10 +201,18 @@ function App() {
 
         if (Array.isArray(data.anomalyData)) {
           setAnomalyData(data.anomalyData);
-          console.log("anomalyData length:", data.anomalyData.length);
         }
 
-        // 기본 분석 호출
+        // ✅ (추가) 백엔드에서 심화분류 맵 받기
+        if (data.advancedMap) {
+          setAdvancedByCcAcc(data.advancedMap.byCcAcc || {});
+          setAdvancedByAcc(data.advancedMap.byAcc || {});
+        } else {
+          setAdvancedByCcAcc({});
+          setAdvancedByAcc({});
+        }
+
+        // ✅ 기본 분석 호출
         try {
           if (!mounted) return;
 
@@ -215,9 +227,40 @@ function App() {
             console.error(msg);
             if (mounted) setAnomalyError(msg);
           } else {
-            const data2 = await res2.json();
-            console.log("anomalyResult(default):", data2);
-            if (mounted) setAnomalyResult(data2);
+            const result = await res2.json();
+            console.log("anomalyResult(default):", result);
+
+            if (!mounted) return;
+
+            setAnomalyResult(result);
+
+            const issues = Array.isArray(result.issues) ? result.issues : [];
+            const normalized = issues.map((r, idx) => ({
+              ...r,
+              id: idx + 1,
+              year_month: r.year_month,
+              amount: r.amount,
+              issue_type: r.issue_type,
+              severity_rank: r.severity_rank,
+              account_code: r.account_code,
+              account_name: r.account_name,
+              cost_center: r.cost_center,
+              cc_name: r.cc_name,
+              reason_kor: r.reason_kor,
+              patternMean:
+                r.patternMean ?? r.pattern_mean ?? r.pattern_avg ?? null,
+              patternUpper: r.patternUpper ?? r.pattern_upper ?? null,
+              patternLower: r.patternLower ?? r.pattern_lower ?? null,
+            }));
+            setAnomalyData(normalized);
+
+            if (Array.isArray(result.costData) && result.costData.length > 0) {
+              setCostData(result.costData);
+            }
+
+            if (result.summary && result.summary.year_month) {
+              setSelectedMonth(result.summary.year_month);
+            }
           }
         } catch (err2) {
           console.error("analyze-default fetch error", err2);
@@ -225,16 +268,17 @@ function App() {
         } finally {
           if (mounted) {
             setAnomalyLoading(false);
-            setInitProgress(80);
+            setInitProgress(90);
           }
         }
 
+        // ✅ landing -> app 전환
         if (mounted) {
-          setStage("app");
           setInitProgress(100);
+          setStage("app");
         }
       } catch (err) {
-        console.error("init-data fetch error", err);
+        console.error("init-data fetch error:", err);
         if (mounted) {
           setStage("error");
           setInitProgress(100);
@@ -388,9 +432,8 @@ function App() {
         body: formData,
       });
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
       const result = await res.json();
       console.log("[Frontend] analyze result:", result);
 
@@ -421,45 +464,6 @@ function App() {
 
       if (result.summary && result.summary.year_month) {
         setSelectedMonth(result.summary.year_month);
-      } else if (Array.isArray(result.costData) && result.costData.length > 0) {
-        const row0 = result.costData[0];
-        const cols = Object.keys(row0 || {});
-        const monthCols = cols.filter((col) =>
-          /(20\d{2}.*\d{1,2}|^\d{4}-\d{2}$|^\d{4}\.\d{2}$|20\d{2}년\s*\d{1,2}월)/.test(
-            String(col)
-          )
-        );
-        if (monthCols.length > 0) {
-          const metasTmp = monthCols.map((col, idx) => {
-            const s = String(col);
-            const m = s.match(/(20\d{2})\D?(\d{1,2})/);
-            let year = null;
-            let month = null;
-            if (m) {
-              year = parseInt(m[1], 10);
-              month = parseInt(m[2], 10);
-            }
-            return {
-              col,
-              year,
-              month,
-              index: idx,
-              label:
-                year && month ? `${year}-${String(month).padStart(2, "0")}` : s,
-            };
-          });
-
-          metasTmp.sort((a, b) => {
-            if (a.year && b.year && a.month && b.month) {
-              if (a.year !== b.year) return a.year - b.year;
-              return a.month - b.month;
-            }
-            return a.index - b.index;
-          });
-
-          const last = metasTmp[metasTmp.length - 1];
-          if (last && last.label) setSelectedMonth(last.label);
-        }
       }
 
       setCostDataUploaded(true);
@@ -484,157 +488,161 @@ function App() {
   };
 
   // ==========================
-  // ✅ (주제3 공통) Back data 엑셀 파싱 + 코드분류표 매핑 + 서버 업로드 1회(+중복 confirm)
+  // ✅ Back data 파싱 + 코드분류표 매핑 + 서버 업로드 완료 후 uploaded 처리
   // ==========================
-  const parseAndApplyBackData = async (file) => {
-    if (!file) return;
+  const parseAndApplyBackData = (file) => {
+    if (!file) return Promise.resolve({ ok: false, reason: "no_file" });
 
-    // 서버로 보낼 수 있도록 파일 보관
     setBackFile(file);
+    setPlDataUploaded(false);
 
-    const reader = new FileReader();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
 
-    reader.onload = async (evt) => {
-      try {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
+      reader.onerror = () => {
+        alert("결산보고서(Back data) 파일을 읽는 중 오류가 발생했습니다.");
+        resolve({ ok: false, reason: "file_read_error" });
+      };
 
-        // 1) Back data 시트 우선 탐색
-        const backSheet =
-          workbook.Sheets["Back data"] ||
-          workbook.Sheets["BackData"] ||
-          workbook.Sheets[workbook.SheetNames[0]];
-        const json = XLSX.utils.sheet_to_json(backSheet, { defval: null });
+      reader.onload = async (evt) => {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: "array" });
 
-        // 2) 코드분류표 시트 탐색 → codeNameMap 세팅
-        let mapping = {};
-        const mappingSheetName = workbook.SheetNames.find((name) =>
-          /코드분류표|code.?map|코드맵/i.test(name)
-        );
+          const backSheet =
+            workbook.Sheets["Back data"] ||
+            workbook.Sheets["BackData"] ||
+            workbook.Sheets[workbook.SheetNames[0]];
 
-        if (mappingSheetName) {
-          const mappingSheet = workbook.Sheets[mappingSheetName];
-          const mappingRows = XLSX.utils.sheet_to_json(mappingSheet, {
-            defval: null,
-          });
+          const json = XLSX.utils.sheet_to_json(backSheet, { defval: null });
 
-          mappingRows.forEach((row) => {
-            const rawCode =
-              row["코드"] ||
-              row["계정코드"] ||
-              row["코스트센터"] ||
-              row["코드값"] ||
-              row["Code"];
-            const rawName =
-              row["내역"] ||
-              row["계정명"] ||
-              row["코스트센터명"] ||
-              row["Name"] ||
-              row["설명"];
+          let mapping = {};
+          const mappingSheetName = workbook.SheetNames.find((name) =>
+            /코드분류표|code.?map|코드맵/i.test(name)
+          );
 
-            if (rawCode && rawName) {
-              const code = String(rawCode).trim();
-              const name = String(rawName).trim();
-              if (code) mapping[code] = name;
-            }
-          });
-        }
+          if (mappingSheetName) {
+            const mappingSheet = workbook.Sheets[mappingSheetName];
+            const mappingRows = XLSX.utils.sheet_to_json(mappingSheet, {
+              defval: null,
+            });
 
-        console.log("[Frontend] P&L back data rows:", json.length);
+            mappingRows.forEach((row) => {
+              const rawCode =
+                row["코드"] ||
+                row["계정코드"] ||
+                row["코스트센터"] ||
+                row["코드값"] ||
+                row["Code"];
+              const rawName =
+                row["내역"] ||
+                row["계정명"] ||
+                row["코스트센터명"] ||
+                row["Name"] ||
+                row["설명"];
 
-        // 프론트 즉시 반영
-        if (json && json.length) {
-          setBackData(json);
-          setCodeNameMap(mapping);
-          setPlDataUploaded(true);
-          setPlPeriod("all");
-        }
+              if (rawCode && rawName) {
+                const code = String(rawCode).trim();
+                const name = String(rawName).trim();
+                if (code) mapping[code] = name;
+              }
+            });
+          }
 
-        // 3) 서버에 /api/pl-report/back-data 업로드도 1회만 시도 (+ need_confirm 처리)
-        if (!plReportRequested) {
+          if (json && json.length) {
+            setBackData(json);
+            setCodeNameMap(mapping);
+            setPlPeriod("all");
+          }
+
           const makeFormData = () => {
             const fd = new FormData();
             fd.append("file", file);
             return fd;
           };
 
-          try {
-            setPlReportRequested(true);
+          if (!plReportRequested) setPlReportRequested(true);
 
-            // 1차 업로드
-            const res = await fetch(`${API_BASE}/api/pl-report/back-data`, {
-              method: "POST",
-              body: makeFormData(),
+          const res = await fetch(`${API_BASE}/api/pl-report/back-data`, {
+            method: "POST",
+            body: makeFormData(),
+          });
+
+          const json1 = await res.json().catch(() => ({}));
+
+          if (!res.ok) {
+            console.warn(
+              "[Frontend] /api/pl-report/back-data failed:",
+              json1?.error || res.status
+            );
+            setPlReportRequested(false);
+            resolve({
+              ok: false,
+              reason: "server_upload_failed",
+              detail: json1,
             });
+            return;
+          }
 
-            const json1 = await res.json().catch(() => ({}));
+          if (json1?.need_confirm) {
+            const ok = window.confirm(
+              json1?.message ||
+                "이미 해당 연도와 월에 해당하는 데이터가 있습니다. 다시 저장할까요?"
+            );
 
-            if (!res.ok) {
-              console.warn(
-                "[Frontend] /api/pl-report/back-data failed:",
-                json1?.error || res.status
-              );
+            if (!ok) {
               setPlReportRequested(false);
+              resolve({ ok: false, reason: "user_canceled_overwrite" });
               return;
             }
 
-            // 중복 데이터 → confirm 후 force 업로드
-            if (json1?.need_confirm) {
-              const ok = window.confirm(
-                json1?.message ||
-                  "이미 해당 연도와 월에 해당하는 데이터가 있습니다. 다시 저장할까요?"
-              );
-
-              if (!ok) {
-                // 사용자가 덮어쓰기 거절 → 다음 업로드 가능하게 풀어줌
-                setPlReportRequested(false);
-                return;
+            const res2 = await fetch(
+              `${API_BASE}/api/pl-report/back-data?force=1`,
+              {
+                method: "POST",
+                body: makeFormData(),
               }
+            );
 
-              const res2 = await fetch(
-                `${API_BASE}/api/pl-report/back-data?force=1`,
-                {
-                  method: "POST",
-                  body: makeFormData(), // ✅ 새 FormData로 재생성
-                }
+            const json2 = await res2.json().catch(() => ({}));
+
+            if (!res2.ok) {
+              console.warn(
+                "[Frontend] overwrite failed:",
+                json2?.error || res2.status
               );
-
-              const json2 = await res2.json().catch(() => ({}));
-
-              if (!res2.ok) {
-                console.warn(
-                  "[Frontend] /api/pl-report/back-data overwrite failed:",
-                  json2?.error || res2.status
-                );
-                setPlReportRequested(false);
-                return;
-              }
-
-              console.log(
-                "[Frontend] /api/pl-report/back-data overwritten:",
-                json2
-              );
-            } else {
-              console.log("[Frontend] /api/pl-report/back-data ok:", json1);
+              setPlReportRequested(false);
+              resolve({
+                ok: false,
+                reason: "server_overwrite_failed",
+                detail: json2,
+              });
+              return;
             }
-          } catch (err) {
-            console.warn("[Frontend] back-data upload error:", err);
-            setPlReportRequested(false);
           }
-        }
-      } catch (err) {
-        console.error("Back data excel parse error:", err);
-        alert(
-          "결산보고서(Back data) 엑셀을 읽는 중 오류가 발생했습니다. 양식을 확인해 주세요."
-        );
-      }
-    };
 
-    reader.readAsArrayBuffer(file);
+          setPlDataUploaded(true);
+          resolve({ ok: true });
+        } catch (err) {
+          console.error("Back data excel parse/upload error:", err);
+          alert(
+            "결산보고서(Back data) 처리 중 오류가 발생했습니다. 양식을 확인해 주세요."
+          );
+          setPlReportRequested(false);
+          resolve({
+            ok: false,
+            reason: "exception",
+            detail: err?.message || String(err),
+          });
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    });
   };
 
   // ==========================
-  // 엑셀 업로드 (결산 Back data) - 기존 UX 유지
+  // 엑셀 업로드 (결산 Back data)
   // ==========================
   const handleUploadPlFile = (e) => {
     const file = e.target.files?.[0];
@@ -642,20 +650,20 @@ function App() {
     setPendingPlFile(file);
   };
 
-  const handleConfirmPlUpload = () => {
+  const handleConfirmPlUpload = async () => {
     if (!pendingPlFile) return;
 
-    setPlUploading(true);
+    try {
+      setPlUploading(true);
+      setPlDataUploaded(false);
 
-    (async () => {
-      try {
-        await parseAndApplyBackData(pendingPlFile);
-      } finally {
-        setPlUploading(false);
-        setPendingPlFile(null);
-        if (plFileInputRef.current) plFileInputRef.current.value = "";
-      }
-    })();
+      const result = await parseAndApplyBackData(pendingPlFile);
+      if (!result?.ok) return;
+    } finally {
+      setPlUploading(false);
+      setPendingPlFile(null);
+      if (plFileInputRef.current) plFileInputRef.current.value = "";
+    }
   };
 
   const handleCancelPendingPlFile = () => {
@@ -663,9 +671,7 @@ function App() {
     if (plFileInputRef.current) plFileInputRef.current.value = "";
   };
 
-  // ==========================
-  // ✅ (주제3 App.js 방식) PlReportTab 내부 업로드 input에서 바로 꽂아 쓰는 핸들러
-  // ==========================
+  // PlReportTab 내부 업로드 input에서 쓰는 핸들러
   const handleBackDataFile = (event) => {
     const file = event?.target?.files?.[0];
     if (!file) return;
@@ -673,7 +679,7 @@ function App() {
   };
 
   // ==========================
-  // 비용 데이터 기반 월 메타 (기존 유지)
+  // 비용 데이터 기반 월 메타
   // ==========================
   const costMonthMeta = useMemo(() => {
     if (!costData || costData.length === 0) return [];
@@ -730,17 +736,15 @@ function App() {
     return metas;
   }, [costData]);
 
-  // selectedMonth 기본값 / 유효성 유지 (기존 유지)
   useEffect(() => {
     if (!costMonthMeta.length) return;
-
     const labels = costMonthMeta.map((m) => m.label);
     if (!selectedMonth || !labels.includes(selectedMonth)) {
       setSelectedMonth(costMonthMeta[costMonthMeta.length - 1].label);
     }
   }, [costMonthMeta, selectedMonth]);
 
-  // 월별 총비용 (기존 유지)
+  // 월별 총비용
   const monthlyTotalCost = useMemo(() => {
     if (!costData || !costMonthMeta.length) return [];
 
@@ -776,7 +780,7 @@ function App() {
     });
   }, [costData, costMonthMeta]);
 
-  // 계정군별 비중 (기존 유지)
+  // 계정군별 비중
   const accountGroupShare = useMemo(() => {
     if (!costData || !costMonthMeta.length || !selectedMonth) return [];
 
@@ -852,7 +856,7 @@ function App() {
     return main.map((x) => ({ ...x, value: Math.round(x.value) }));
   }, [costData, costMonthMeta, selectedMonth]);
 
-  // 코스트센터별 비용 Top 5 (기존 유지)
+  // 코스트센터별 비용 Top 5
   const topCostCenters = useMemo(() => {
     if (!costData || !costMonthMeta.length || !selectedMonth) return [];
 
@@ -864,11 +868,11 @@ function App() {
     const sample = costData[0] || {};
     const keys = Object.keys(sample);
 
-    let ccNameKey =
+    const ccNameKey =
       keys.find((k) => k.includes("코스트센터명")) ||
       keys.find((k) => k.includes("코스트센터") && !k.includes("코드")) ||
       keys.find((k) => /cost.?center.?name/i.test(k));
-    let ccCodeKey =
+    const ccCodeKey =
       keys.find((k) => k.includes("코스트센터코드")) ||
       keys.find((k) => /cost.?center.?code/i.test(k));
 
@@ -893,13 +897,12 @@ function App() {
     return arr.slice(0, 5);
   }, [costData, costMonthMeta, selectedMonth]);
 
-  // Closing 탭 분석 (기존 유지)
+  // Closing 탭 분석
   const closingAnalysis = useMemo(() => {
     if (anomalyData && anomalyData.length > 0) {
       const issues = anomalyData.filter(
         (r) => r.issue_type && r.issue_type !== "정상"
       );
-
       if (!issues.length) return { rows: [], history: {} };
 
       const history = {};
@@ -914,55 +917,55 @@ function App() {
         });
       });
 
-      Object.keys(history).forEach((key) => {
-        history[key].sort((a, b) => a.month.localeCompare(b.month));
-      });
+      Object.keys(history).forEach((key) =>
+        history[key].sort((a, b) => a.month.localeCompare(b.month))
+      );
 
-      const rows = issues.map((r, idx) => {
-        const severity = Number(r.severity_rank || 0);
+      const rows = issues
+        .map((r, idx) => {
+          const severity = Number(r.severity_rank || 0);
 
-        let status = "check";
-        if (r.issue_type === "결측 의심") status = "issue";
-        else if (r.issue_type === "이상치 의심" && severity >= 4)
-          status = "issue";
+          let status = "check";
+          if (r.issue_type === "결측 의심") status = "issue";
+          else if (r.issue_type === "이상치 의심" && severity >= 4)
+            status = "issue";
 
-        const key = `${r.account_code || ""}|${r.account_name || ""}|${
-          r.cost_center || ""
-        }`;
+          const key = `${r.account_code || ""}|${r.account_name || ""}|${
+            r.cost_center || ""
+          }`;
 
-        const patternMean =
-          r.patternMean ??
-          r.pattern_mean ??
-          r.base_mean ??
-          r.pattern_avg ??
-          null;
-        const patternUpper =
-          r.patternUpper ?? r.pattern_upper ?? r.base_upper ?? null;
-        const patternLower =
-          r.patternLower ?? r.pattern_lower ?? r.base_lower ?? null;
+          const patternMean =
+            r.patternMean ??
+            r.pattern_mean ??
+            r.base_mean ??
+            r.pattern_avg ??
+            null;
+          const patternUpper =
+            r.patternUpper ?? r.pattern_upper ?? r.base_upper ?? null;
+          const patternLower =
+            r.patternLower ?? r.pattern_lower ?? r.base_lower ?? null;
 
-        return {
-          id: idx + 1,
-          key,
-          month: String(r.year_month || ""),
-          accountCode: r.account_code || "",
-          accountName: r.account_name || "",
-          costCenter: r.cc_name || r.cost_center || "",
-          amount: Number(r.amount) || 0,
-          status,
-          reason: r.reason_kor || "",
-          issueType: r.issue_type || "",
-          severity,
-          patternMean,
-          patternUpper,
-          patternLower,
-        };
-      });
-
-      rows.sort((a, b) => {
-        if (b.severity !== a.severity) return b.severity - a.severity;
-        return Math.abs(b.amount) - Math.abs(a.amount);
-      });
+          return {
+            id: idx + 1,
+            key,
+            month: String(r.year_month || ""),
+            accountCode: r.account_code || "",
+            accountName: r.account_name || "",
+            costCenter: r.cc_name || r.cost_center || "",
+            amount: Number(r.amount) || 0,
+            status,
+            reason: r.reason_kor || "",
+            issueType: r.issue_type || "",
+            severity,
+            patternMean,
+            patternUpper,
+            patternLower,
+          };
+        })
+        .sort((a, b) => {
+          if (b.severity !== a.severity) return b.severity - a.severity;
+          return Math.abs(b.amount) - Math.abs(a.amount);
+        });
 
       return { rows: rows.slice(0, 50), history };
     }
@@ -972,14 +975,14 @@ function App() {
     const sample = costData[0] || {};
     const keys = Object.keys(sample);
 
-    let accNameKey =
+    const accNameKey =
       keys.find((k) => k.includes("계정명")) ||
       keys.find((k) => k.includes("계정") && !k.includes("코드")) ||
       keys.find((k) => /account.?name/i.test(k));
-    let accCodeKey =
+    const accCodeKey =
       keys.find((k) => k.includes("계정코드")) ||
       keys.find((k) => /account.?code/i.test(k));
-    let ccNameKey =
+    const ccNameKey =
       keys.find((k) => k.includes("코스트센터명")) ||
       keys.find((k) => k.includes("코스트센터") && !k.includes("코드")) ||
       keys.find((k) => /cost.?center.?name/i.test(k));
@@ -1072,7 +1075,7 @@ function App() {
     return { rows: rows.slice(0, 30), history };
   }, [anomalyData, costData, costMonthMeta]);
 
-  // Variance 탭 (기존 유지)
+  // Variance 탭
   const varianceData = useMemo(() => {
     if (!costData || costMonthMeta.length < 2) return [];
 
@@ -1082,11 +1085,11 @@ function App() {
     const sample = costData[0] || {};
     const keys = Object.keys(sample);
 
-    let accNameKey =
+    const accNameKey =
       keys.find((k) => k.includes("계정명")) ||
       keys.find((k) => k.includes("계정") && !k.includes("코드")) ||
       keys.find((k) => /account.?name/i.test(k));
-    let accCodeKey =
+    const accCodeKey =
       keys.find((k) => k.includes("계정코드")) ||
       keys.find((k) => /account.?code/i.test(k));
 
@@ -1134,7 +1137,7 @@ function App() {
     return { totalDiff, pos, neg, count: varianceData.length };
   }, [varianceData]);
 
-  // KPI 계산 (Overview 탭) (기존 유지)
+  // KPI (Overview)
   const kpi = useMemo(() => {
     if (!monthlyTotalCost.length || !selectedMonth) {
       return {
@@ -1177,7 +1180,7 @@ function App() {
   }, [monthlyTotalCost, selectedMonth]);
 
   // ==========================
-  // ✅ 주제3: P&L 계산 로직 (기존 유지)
+  // ✅ 주제3: P&L 계산 로직
   // ==========================
   const plAvailablePeriods = useMemo(() => {
     if (!backData) return [];
@@ -1384,7 +1387,7 @@ function App() {
   }, [plRows]);
 
   // ==========================
-  // 공통 레이아웃 / 스타일 (기존 유지)
+  // 레이아웃 / 스타일
   // ==========================
   const SIDEBAR_ICON_WIDTH = 56;
   const SIDEBAR_PANEL_WIDTH = 240;
@@ -1397,12 +1400,11 @@ function App() {
     color: BRAND_DARK,
   };
 
-  // ✅ 패널이 항상 떠 있으니 메인 콘텐츠가 가리지 않게 marginLeft를 패널 전체폭으로 변경
   const mainWrapperStyle = {
     flex: 1,
     padding: "18px 24px",
     minWidth: 0,
-    marginLeft: SIDEBAR_PANEL_WIDTH,
+    marginLeft: 240,
   };
 
   const cardStyle = {
@@ -1412,6 +1414,7 @@ function App() {
     boxShadow: "0 0 0 rgba(0,0,0,0.02)",
     padding: 14,
   };
+
 
   // ✅ 사이드메뉴: "그래프 전용 페이지" 항목 제거
   const sideMenus = [
@@ -1434,16 +1437,14 @@ function App() {
       icon: iconSignal,
     },
     {
-      id: "pl-report-basic",
+      id: "pl_group",
       label: "P&L Report",
-      desc: "결산 보고서(기본)",
+      desc: "결산 보고서",
       icon: iconDoc,
-    },
-    {
-      id: "pl-report-cause",
-      label: "P&L Report 심화",
-      desc: "원인 분석(심화)",
-      icon: iconChart,
+      children: [
+        { id: "pl_basic", label: "기본", desc: "표/요약" },
+        { id: "pl_advanced", label: "심화", desc: "원인 분석" },
+      ],
     },
     {
       id: "forecast",
@@ -1453,7 +1454,23 @@ function App() {
     },
   ];
 
-  const currentMenu = sideMenus.find((m) => m.id === tab);
+  const currentMenu = useMemo(() => {
+    const direct = sideMenus.find((m) => m.id === tab);
+    if (direct) return direct;
+
+    for (const m of sideMenus) {
+      const kids = Array.isArray(m.children) ? m.children : [];
+      const child = kids.find((c) => c.id === tab);
+      if (child) {
+        return {
+          ...m,
+          label: `${m.label} / ${child.label}`,
+          desc: child.desc || m.desc,
+        };
+      }
+    }
+    return null;
+  }, [sideMenus, tab]);
 
   // 업로드 아이콘 상태: idle / pending / uploading / uploaded
   const costIconStatus = costUploading
@@ -1463,7 +1480,6 @@ function App() {
     : costDataUploaded
     ? "uploaded"
     : "idle";
-
   const plIconStatus = plUploading
     ? "uploading"
     : pendingPlFile
@@ -1493,10 +1509,9 @@ function App() {
   const plStatusLabel = getPlStatusLabel();
 
   // =====================================================
-  // ✅ 여기부터는 렌더링 분기 (기존 유지)
+  // 렌더링 분기
   // =====================================================
 
-  // 1) 로그인 안됐으면 LoginPage
   if (!isLoggedIn) {
     return (
       <LoginPage
@@ -1505,7 +1520,6 @@ function App() {
           setStage("landing");
           setInitProgress(0);
 
-          // ✅ 로그인 후 새 세션은 업로드 안 된 상태가 기본
           setCostDataUploaded(false);
           setPlDataUploaded(false);
           setPlReportRequested(false);
@@ -1521,7 +1535,6 @@ function App() {
     );
   }
 
-  // 2) landing / error 화면
   if (stage === "landing") {
     return (
       <div
@@ -1578,6 +1591,7 @@ function App() {
               }}
             />
           </div>
+
           <div
             style={{
               fontSize: 26,
@@ -1592,6 +1606,7 @@ function App() {
           >
             ILJI TECH
           </div>
+
           <div
             style={{
               fontSize: 13,
@@ -1615,6 +1630,7 @@ function App() {
             <span>데이터 로딩 중...</span>
             <span>{initProgress}%</span>
           </div>
+
           <div
             style={{
               width: "100%",
@@ -1705,7 +1721,7 @@ function App() {
     );
   }
 
-  // 3) 실제 대시보드 레이아웃
+  // 3) 실제 대시보드 레이아웃 (stage === "app")
   return (
     <div style={layoutStyle}>
       {/* 숨겨진 파일 input들 */}
@@ -1724,7 +1740,7 @@ function App() {
         onChange={handleUploadPlFile}
       />
 
-      {/* ✅ 왼쪽 아이콘 열 (분리됨) */}
+      {/* ✅ 왼쪽 아이콘 열 */}
       <SidebarIcons
         sideMenus={sideMenus}
         tab={tab}
@@ -1735,6 +1751,18 @@ function App() {
         plFileInputRef={plFileInputRef}
         costIconStyle={costIconStyle}
         plIconStyle={plIconStyle}
+        pendingCostFile={pendingCostFile}
+        pendingPlFile={pendingPlFile}
+        costUploading={costUploading}
+        plUploading={plUploading}
+        costIconStatus={costIconStatus}
+        plIconStatus={plIconStatus}
+        onPickCostFile={() => costFileInputRef.current?.click()}
+        onPickPlFile={() => plFileInputRef.current?.click()}
+        onConfirmCost={handleConfirmCostUpload}
+        onCancelCost={handleCancelPendingCostFile}
+        onConfirmPl={handleConfirmPlUpload}
+        onCancelPl={handleCancelPendingPlFile}
         onLogout={() => {
           setIsLoggedIn(false);
           setStage("landing");
@@ -1742,7 +1770,7 @@ function App() {
         }}
       />
 
-      {/* ✅ 오른쪽 설명/업로드 패널 (분리됨) */}
+      {/* ✅ 오른쪽 설명/업로드 패널 */}
       <SidebarPanel
         sideMenus={sideMenus}
         tab={tab}
@@ -1887,7 +1915,6 @@ function App() {
                     {/* ✅ Month: 탭에 따라 costMonthMeta vs reportPeriods 로 분기 */}
                     <span style={chipBase}>
                       <span>Month:</span>
-
                       <select
                         value={isPlReportTab ? selectedReportYm || "" : selectedMonth || ""}
                         onChange={(e) => {
@@ -1940,7 +1967,6 @@ function App() {
                           ))
                         )}
                       </select>
-
                       <span
                         style={{
                           color: "#64748b",
@@ -2034,10 +2060,10 @@ function App() {
             costMonthMeta={costMonthMeta}
             selectedMonth={selectedMonth}
             setSelectedMonth={setSelectedMonth}
-            closingKpi={{
-              month: selectedMonth,
-              ...kpi,
-            }}
+            closingKpi={{ month: selectedMonth, ...kpi }}
+            // ✅ (추가) 백엔드 심화분류 맵 전달
+            advancedByCcAcc={advancedByCcAcc}
+            advancedByAcc={advancedByAcc}
           />
         )}
 
@@ -2058,6 +2084,8 @@ function App() {
 
         {/* ✅ 주제3: P&L 기본 (표 페이지) */}
         {tab === "pl-report-basic" && (
+
+
           <PlReportTab
             // ✅ report_data 기준 Month 전달(추가)
             selectedYm={selectedReportYm}
@@ -2090,7 +2118,7 @@ function App() {
           <PlReportCauseTab selectedYm={selectedReportYm} />
         )}
 
-        {/* ✅ 주제4: Forecast */}
+
         {tab === "forecast" && <ForecastTab cardStyle={cardStyle} />}
       </main>
     </div>

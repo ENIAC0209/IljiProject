@@ -6,7 +6,7 @@ import numpy as np
 from sklearn.ensemble import IsolationForest
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
-from typing import Union, IO
+from typing import Union, IO, Optional
 
 
 # ============================================================
@@ -73,14 +73,18 @@ def parse_cost_center_excel(file_source: Union[str, IO, bytes]):
     """
     코스트센터별 2년치 관리회계 엑셀을 Long 형태로 파싱
 
-    - file_source: 파일 경로(str) 또는 BytesIO/파일 객체
+    - file_source: 파일 경로(str) 또는 BytesIO/파일 객체/bytes
       (Flask에서 업로드 받은 파일을 BytesIO로 넘겨도 됨)
 
     반환 컬럼:
       - cost_center, cc_name, year_month, year, month,
         account_code, account_name, amount, cost_nature(선택)
     """
-    # pandas는 경로/파일 객체/BytesIO 모두 허용
+    # bytes면 BytesIO로 래핑
+    if isinstance(file_source, (bytes, bytearray)):
+        file_source = IO[bytes]  # type hint용, 실제 런타임은 아래에서 처리
+        file_source = pd.io.common.BytesIO(file_source)
+
     raw = pd.read_excel(file_source, header=None)
 
     # 2행: 월 정보 / 3행: 필드명
@@ -155,21 +159,20 @@ def parse_cost_center_excel(file_source: Union[str, IO, bytes]):
         """
         계정코드 / 계정명 / 금액 컬럼 이름 자동 추정
         """
-        cols = list(month_slice.columns)
+        cols_ = list(month_slice.columns)
 
         def pick(substrings, default_idx=None):
-            for c in cols:
+            for c in cols_:
                 s = str(c)
                 if any(sub in s for sub in substrings):
                     return c
-            if default_idx is not None and default_idx < len(cols):
-                return cols[default_idx]
-            return cols[-1]
+            if default_idx is not None and default_idx < len(cols_):
+                return cols_[default_idx]
+            return cols_[-1]
 
         code_col = pick(["계정코드", "코드"], default_idx=0)
-        name_col = pick(["계정명", "계정 명", "명", "이름"], default_idx=1 if len(cols) > 1 else 0)
-        amt_col  = pick(["실제원가", "금액", "원가"], default_idx=len(cols) - 1)
-
+        name_col = pick(["계정명", "계정 명", "명", "이름"], default_idx=1 if len(cols_) > 1 else 0)
+        amt_col  = pick(["실제원가", "금액", "원가"], default_idx=len(cols_) - 1)
         return code_col, name_col, amt_col
 
     for m in unique_months:
@@ -206,17 +209,17 @@ def parse_cost_center_excel(file_source: Union[str, IO, bytes]):
         else:
             cost_nature_series = pd.Series([np.nan] * n_rows)
 
-        base_dict = {
-            "cost_center":  cost_centers.values,
-            "cc_name":      cc_names.values,
-            "year_month":   np.array([ym_norm] * n_rows),
-            "account_code": account_codes.values,
-            "account_name": account_names.values,
-            "amount":       amounts.values,
-            "cost_nature":  cost_nature_series.values,
-        }
-
-        tmp = pd.DataFrame(base_dict)
+        tmp = pd.DataFrame(
+            {
+                "cost_center":  cost_centers.values,
+                "cc_name":      cc_names.values,
+                "year_month":   np.array([ym_norm] * n_rows),
+                "account_code": account_codes.values,
+                "account_name": account_names.values,
+                "amount":       amounts.values,
+                "cost_nature":  cost_nature_series.values,
+            }
+        )
         records.append(tmp)
 
     if not records:
@@ -231,10 +234,10 @@ def parse_cost_center_excel(file_source: Union[str, IO, bytes]):
     df_long["cost_nature"] = df_long["cost_nature"].astype(str).str.strip()
     df_long.loc[df_long["cost_nature"].isin(["", "nan", "NaN"]), "cost_nature"] = np.nan
 
-    # year, month 컬럼 별도 생성 (엑셀 필터용)
+    # year, month 컬럼 생성 + 타입 안정화 (✅ app.py에서 int() 캐스팅 안전)
     df_long["year_month"] = df_long["year_month"].astype(str)
-    df_long["year"]  = df_long["year_month"].str.slice(0, 4)
-    df_long["month"] = df_long["year_month"].str.slice(5, 7)
+    df_long["year"] = pd.to_numeric(df_long["year_month"].str.slice(0, 4), errors="coerce").astype("Int64")
+    df_long["month"] = pd.to_numeric(df_long["year_month"].str.slice(5, 7), errors="coerce").astype("Int64")
 
     return df_long
 
@@ -242,13 +245,33 @@ def parse_cost_center_excel(file_source: Union[str, IO, bytes]):
 # ============================================================
 # 2. 결측치(의도치 않은 공백) 후보 탐지
 # ============================================================
+def detect_potential_missing(
+    df: pd.DataFrame,
+    lookback_months: Optional[int] = None,   # ✅ app.py 호환
+    lookback_short: int = 3,
+    lookback_long: int = 12,
+):
+    """
+    ✅ 누락(빈칸 NaN) 의심 플래그를 2개로 분리해서 생성
+      - suspected_missing_3m : 직전 3개월이 모두 NaN이 아닐 때, 이번 달 NaN이면 True
+      - suspected_missing_12m: 직전 12개월이 모두 NaN이 아닐 때, 이번 달 NaN이면 True
+    (0은 NaN이 아니므로 '값이 있었다'로 간주됨)
 
-def detect_potential_missing(df, lookback_months=3):
+    + 기존 호환용 suspected_missing = (3m OR 12m)
+
+    ✅ 변경: lookback_months가 들어오면 lookback_short로 사용(기존 app.py 호출 방식 호환)
+    """
+    if lookback_months is not None:
+        lookback_short = int(lookback_months)
+
     df = df.sort_values(["cost_center", "account_code", "year_month"]).copy()
     df["year_month"] = df["year_month"].astype(str)
-    df["suspected_missing"] = False
 
-    for (cc, acc), grp in df.groupby(["cost_center", "account_code"]):
+    df["suspected_missing_3m"] = False
+    df["suspected_missing_12m"] = False
+    df["suspected_missing"] = False  # 호환용
+
+    for (cc, acc), grp in df.groupby(["cost_center", "account_code"], dropna=False):
         grp = grp.sort_values("year_month")
         values = grp["amount"].to_numpy()
         idx = grp.index.to_numpy()
@@ -257,11 +280,17 @@ def detect_potential_missing(df, lookback_months=3):
             if not np.isnan(values[i]):
                 continue
 
-            start = max(0, i - lookback_months)
-            prev_vals = values[start:i]
-            if len(prev_vals) < lookback_months:
-                continue
-            if np.all(~np.isnan(prev_vals)):
+            start3 = max(0, i - lookback_short)
+            prev3 = values[start3:i]
+            if len(prev3) >= lookback_short and np.all(~np.isnan(prev3)):
+                df.loc[idx[i], "suspected_missing_3m"] = True
+
+            start12 = max(0, i - lookback_long)
+            prev12 = values[start12:i]
+            if len(prev12) >= lookback_long and np.all(~np.isnan(prev12)):
+                df.loc[idx[i], "suspected_missing_12m"] = True
+
+            if df.loc[idx[i], "suspected_missing_3m"] or df.loc[idx[i], "suspected_missing_12m"]:
                 df.loc[idx[i], "suspected_missing"] = True
 
     return df
@@ -270,12 +299,10 @@ def detect_potential_missing(df, lookback_months=3):
 # ============================================================
 # 3. 패턴/통계 피처 생성
 # ============================================================
-
-def build_features(df):
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df["year_month"] = df["year_month"].astype(str)
 
-    # 로그 금액
     df["amount_signed_log1p"] = np.sign(df["amount"]) * np.log1p(np.abs(df["amount"].fillna(0)))
 
     df = df.sort_values(["cost_center", "account_code", "year_month"])
@@ -285,11 +312,9 @@ def build_features(df):
     df["std_12"]  = df.groupby(group_cols)["amount"].transform("std")
     df["cv_12"]   = df["std_12"] / (df["mean_12"].replace(0, np.nan)).abs()
 
-    # --- 패턴 밴드용 상/하한선 (평균 ± 2*표준편차) ---
     df["normal_upper"] = df["mean_12"] + 2 * df["std_12"]
     df["normal_lower"] = df["mean_12"] - 2 * df["std_12"]
 
-    # 3개월 롤링 (행 길이 정확히 맞게 transform 사용)
     df["roll_mean_3"] = (
         df.groupby(group_cols)["amount"]
         .transform(lambda s: s.rolling(window=3, min_periods=2).mean())
@@ -303,14 +328,12 @@ def build_features(df):
     df["zscore_12"] = (df["amount"] - df["mean_12"]) / (df["std_12"].replace(0, np.nan) + eps)
     df["dev_3m"]    = (df["amount"] - df["roll_mean_3"]) / (df["roll_std_3"].replace(0, np.nan) + eps)
 
-    # 전월 금액 / 증감률
     df["prev_amount"] = df.groupby(group_cols)["amount"].shift(1)
     df["prev_diff_rate"] = (df["amount"] - df["prev_amount"]) / (df["prev_amount"] + 1e-6) * 100
 
-    # 비용 성질 인코딩
     df["cost_nature"] = df["cost_nature"].astype(str)
-    df["is_fixed"]    = df["cost_nature"].str.contains("고정",   na=False).astype(int)
-    df["is_variable"] = df["cost_nature"].str.contains("변동",   na=False).astype(int)
+    df["is_fixed"]    = df["cost_nature"].str.contains("고정", na=False).astype(int)
+    df["is_variable"] = df["cost_nature"].str.contains("변동", na=False).astype(int)
     df["is_seasonal"] = df["cost_nature"].str.contains("계절|시즌", na=False).astype(int)
 
     nature_map = {}
@@ -325,8 +348,7 @@ def build_features(df):
 # ============================================================
 # 4. 코스트센터 내 계정 상관관계 기반 피처
 # ============================================================
-
-def compute_corr_pairs(df, corr_threshold=0.9):
+def compute_corr_pairs(df: pd.DataFrame, corr_threshold=0.9) -> pd.DataFrame:
     df = df.copy()
     df["year_month"] = df["year_month"].astype(str)
 
@@ -336,12 +358,7 @@ def compute_corr_pairs(df, corr_threshold=0.9):
         if grp["account_code"].nunique() < 2:
             continue
 
-        pivot = grp.pivot_table(
-            index="year_month",
-            columns="account_code",
-            values="amount"
-        )
-
+        pivot = grp.pivot_table(index="year_month", columns="account_code", values="amount")
         if pivot.shape[1] < 2:
             continue
 
@@ -371,10 +388,7 @@ def compute_corr_pairs(df, corr_threshold=0.9):
         df = build_features(df)
 
     tmp = df[["cost_center", "year_month", "account_code", "zscore_12"]].copy()
-    tmp = tmp.rename(columns={
-        "account_code": "partner_code",
-        "zscore_12":   "partner_zscore_12"
-    })
+    tmp = tmp.rename(columns={"account_code": "partner_code", "zscore_12": "partner_zscore_12"})
 
     df = df.merge(
         tmp,
@@ -402,8 +416,7 @@ def compute_corr_pairs(df, corr_threshold=0.9):
 # ============================================================
 # 5. IF + LOF 앙상블
 # ============================================================
-
-def run_ensemble_outlier(df, contamination=0.05, random_state=42):
+def run_ensemble_outlier(df: pd.DataFrame, contamination=0.05, random_state=42) -> pd.DataFrame:
     df = df.copy()
 
     feature_cols = [
@@ -423,7 +436,6 @@ def run_ensemble_outlier(df, contamination=0.05, random_state=42):
             df[col] = 0.0
 
     X = df[feature_cols].fillna(0.0).values
-
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
 
@@ -443,7 +455,7 @@ def run_ensemble_outlier(df, contamination=0.05, random_state=42):
         novelty=False,
         n_jobs=-1
     )
-    lof_labels = lof.fit_predict(X_scaled)
+    lof.fit_predict(X_scaled)
     lof_scores_raw = lof.negative_outlier_factor_
     lof_scores = -(lof_scores_raw - lof_scores_raw.min()) / (
         lof_scores_raw.max() - lof_scores_raw.min() + 1e-6
@@ -464,23 +476,18 @@ def run_ensemble_outlier(df, contamination=0.05, random_state=42):
 # ============================================================
 # 6. 사람용 한글 설명
 # ============================================================
-
 def _format_won(x):
     try:
-        return f"{int(round(x)):,}원"
+        return f"{int(round(float(x))):,}원"
     except Exception:
         return str(x)
-def build_human_explanations(df):
-    """
-    각 행에 대해
-      - issue_type: "정상" / "결측 의심" / "이상치 의심"
-      - severity_rank: 1~5
-      - reason_kor: 사람이 읽을 수 있는 한글 설명
-      - reason_tags: ["전월 대비 급변동", "연간 평균 이탈", ...] 태그 리스트
 
-    ✅ 변경 사항
-    - 금액이 빈칸(NaN)인 경우도 "0인 경우"와 동일한 로직으로 처리
-      (즉, 0과 NaN을 동일하게 취급)
+
+def build_human_explanations(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    ✅ 요구 반영:
+    1) 결측 사유를 3개월/12개월로 분리해 각각 reason_kor에 출력
+    2) 0원 이상치 사유에서 6개월 기준 제거, 3개월/12개월만 사용
     """
     df = df.copy()
     df["year_month"] = df["year_month"].astype(str)
@@ -491,13 +498,18 @@ def build_human_explanations(df):
     reason_tags_all = []
 
     for _, row in df.iterrows():
-        amt  = row["amount"]
+        amt  = row.get("amount", np.nan)
         z    = row.get("zscore_12", np.nan)
         dev3 = row.get("dev_3m", np.nan)
         cv   = row.get("cv_12", np.nan)
         corr_w    = row.get("corr_weight", np.nan)
         sign_diff = bool(row.get("sign_diff_with_partner", False))
         suspected_missing = bool(row.get("suspected_missing", False))
+
+        # ✅ 분리 플래그
+        suspected_missing_3m = bool(row.get("suspected_missing_3m", False))
+        suspected_missing_12m = bool(row.get("suspected_missing_12m", False))
+
         nature = str(row.get("cost_nature", "")).strip()
         partner_acc = row.get("corr_partner_acc", None)
         partner_z   = row.get("partner_zscore_12", np.nan)
@@ -513,30 +525,53 @@ def build_human_explanations(df):
         reason_list = []
         tags = []
 
-        # ====================================
-        # ✅ 1) 0 / 빈칸(NaN) 공통 처리
-        #     → 둘 다 "0인 경우" 로직을 타도록 통일
-        # ====================================
-        is_zero = False
+        is_zero_like = False
         try:
             if pd.isna(amt) or float(amt) == 0.0:
-                is_zero = True
+                is_zero_like = True
         except Exception:
-            is_zero = False
+            is_zero_like = False
 
-        # 과거 이력(같은 코스트센터+계정, 이번 달 이전)
-        cc_mask = (df["cost_center"] == row["cost_center"]) & (
-            df["account_code"] == row["account_code"]
-        )
+        # ======================================================
+        # ✅ 0) 결측 의심 (3개월/12개월 사유 분리 출력)
+        # ======================================================
+        if suspected_missing and pd.isna(amt):
+            issue_type = "결측 의심"
+            severity = 4
+            tags.append("결측 의심")
+
+            # ✅ 3개월 / 12개월 각각 출력
+            if suspected_missing_3m:
+                reason_list.append(
+                    "이번 달 금액이 공백(NaN)이며, 직전 3개월은 모두 값이 존재했습니다. (3개월 기준 누락 의심)"
+                )
+            if suspected_missing_12m:
+                reason_list.append(
+                    "이번 달 금액이 공백(NaN)이며, 직전 12개월은 모두 값이 존재했습니다. (12개월 기준 누락 의심)"
+                )
+
+            # 혹시 플래그가 둘 다 False인데 suspected_missing만 True인 예외 케이스 대비
+            if not reason_list:
+                reason_list.append(
+                    "이번 달 금액이 공백(NaN)인데, 직전 기간에는 값이 계속 존재했습니다. 의도치 않은 누락 입력 가능성이 높습니다."
+                )
+
+            issue_types.append(issue_type)
+            severities.append(severity)
+            reasons.append(" / ".join(reason_list))
+            reason_tags_all.append(tags)
+            continue
+
+        # ======================================================
+        # 1) 0원 처리 (✅ 6개월 기준 제거, 3개월/12개월만 사용)
+        # ======================================================
+        cc_mask = (df["cost_center"] == row["cost_center"]) & (df["account_code"] == row["account_code"])
         hist_grp = df[cc_mask].sort_values("year_month")
         hist_before = hist_grp[hist_grp["year_month"] < row["year_month"]]
         past_vals = hist_before["amount"]
-
-        # 과거 NaN 제거한 값
         past_non_nan = past_vals.dropna()
         total_past_months = len(past_non_nan)
 
-        # 직전부터 연속 0원 개수
         consec_zero_months = 0
         for v in reversed(past_non_nan.tolist()):
             try:
@@ -547,55 +582,45 @@ def build_human_explanations(df):
             except Exception:
                 break
 
-        # 직전 3개월 / 6개월 중 0원 개수
         last3 = past_vals.tail(3).dropna()
         zero3 = int((last3 == 0).sum()) if len(last3) > 0 else 0
         n3 = len(last3)
 
-        last6 = past_vals.tail(6).dropna()
-        zero6 = int((last6 == 0).sum()) if len(last6) > 0 else 0
-        n6 = len(last6)
+        # ✅ 12개월 기준 추가
+        last12 = past_vals.tail(12).dropna()
+        zero12 = int((last12 == 0).sum()) if len(last12) > 0 else 0
+        n12 = len(last12)
 
-        force_zero_anomaly = False  # 0/빈칸 때문에 강제로 이상치로 볼지 여부
+        force_zero_anomaly = False
 
-        if is_zero:
-            # 과거가 전부 0 또는 NaN → 계속 0/공백인 계정 → 정상 패턴
+        if (not pd.isna(amt)) and is_zero_like:
             if total_past_months > 0 and past_non_nan.eq(0).all():
                 tags.append("지속적 0원 패턴")
                 msg = "과거에도 지속적으로 0원으로 발생한 계정입니다."
-
-                msg_detail = ""
-                msg_detail += f" 과거 {total_past_months}개월 동안 기록된 월은 모두 0원이었습니다."
-
+                msg_detail = f" 과거 {total_past_months}개월 동안 기록된 월은 모두 0원이었습니다."
                 if consec_zero_months > 0:
                     msg_detail += f" 직전에는 {consec_zero_months}개월 연속 0원이 유지되었습니다."
-
                 if n3 > 0:
                     msg_detail += f" 직전 3개월 기준으로는 {n3}개월 중 {zero3}개월이 0원이었습니다."
-                if n6 > 0:
-                    msg_detail += f" 직전 6개월 기준으로는 {n6}개월 중 {zero6}개월이 0원이었습니다."
-
+                if n12 > 0:
+                    msg_detail += f" 직전 12개월 기준으로는 {n12}개월 중 {zero12}개월이 0원이었습니다."
                 reason_list.append(msg + msg_detail)
-
             else:
-                # 과거에 0이 아닌 값이 한 번이라도 존재 → 이번 0/빈칸은 이상치로 간주
                 force_zero_anomaly = True
                 tags.append("0원 이상치")
-                msg = "과거에 금액이 존재했으나 이번 달은 0 또는 미입력(공백)으로 처리되었습니다."
-
+                msg = "과거에 금액이 존재했으나 이번 달은 0으로 처리되었습니다."
                 msg_detail = ""
                 if n3 > 0:
                     msg_detail += f" 직전 3개월 동안 {n3}개월 중 {zero3}개월만 0원이었고, 나머지는 금액이 발생했습니다."
-                if n6 > 0:
-                    msg_detail += f" 직전 6개월 기준으로는 {n6}개월 중 {zero6}개월이 0원이었습니다."
+                if n12 > 0:
+                    msg_detail += f" 직전 12개월 기준으로는 {n12}개월 중 {zero12}개월이 0원이었습니다."
                 if consec_zero_months > 0:
                     msg_detail += f" 이번 달 기준 직전 {consec_zero_months}개월은 연속 0원이었습니다."
-
                 reason_list.append(msg + msg_detail)
 
-        # ====================================
-        # 2) 이상치 의심 (비 0 포함)
-        # ====================================
+        # ======================================================
+        # 2) 이상치 의심
+        # ======================================================
         anomaly_flag_base = bool(row.get("anomaly_flag", False))
         anomaly_flag = anomaly_flag_base or force_zero_anomaly
 
@@ -618,7 +643,6 @@ def build_human_explanations(df):
                 severity += 1
             severity = int(max(2, min(severity, 5)))
 
-            # (1) 비용 성질 기반 설명
             if nature and nature != "nan":
                 if "고정" in nature and pd.notna(z) and abs(z) >= 2.0:
                     tags.append("고정비 패턴 이탈")
@@ -636,17 +660,15 @@ def build_human_explanations(df):
                         f"[계절비] 성격의 계정인데, 계절 패턴 대비 크게 벗어난 수준입니다 (z-score={z:.2f})."
                     )
 
-            # (2) 전월 대비 급변동
             if pd.notna(prev_amt) and not pd.isna(amt):
                 if abs(prev_diff) >= 30.0:
-                    방향 = "증가" if prev_diff > 0 else "감소"
+                    direction = "증가" if prev_diff > 0 else "감소"
                     tags.append("전월 대비 급변동")
                     reason_list.append(
                         f"전월 금액 {_format_won(prev_amt)} 대비 이번 달 금액 {_format_won(amt)}가 "
-                        f"{prev_diff:+.1f}% {방향}했습니다."
+                        f"{prev_diff:+.1f}% {direction}했습니다."
                     )
 
-            # (3) 최근 12개월 평균 대비
             if pd.notna(z) and abs(z) >= 2.0 and pd.notna(mean_12) and not pd.isna(amt):
                 diff_rate = ((amt - mean_12) / (mean_12 + 1e-6)) * 100
                 tags.append("연간 평균 대비 이탈")
@@ -655,7 +677,6 @@ def build_human_explanations(df):
                     f"{diff_rate:+.1f}% 수준으로 {'높게' if diff_rate > 0 else '낮게'} 나타났습니다."
                 )
 
-            # (4) 직전 3개월 패턴 대비
             if pd.notna(dev3) and abs(dev3) >= 2.0 and pd.notna(roll_mean_3) and not pd.isna(amt):
                 diff_rate_3 = ((amt - roll_mean_3) / (roll_mean_3 + 1e-6)) * 100
                 tags.append("3개월 추세 대비 이탈")
@@ -664,7 +685,6 @@ def build_human_explanations(df):
                     f"{diff_rate_3:+.1f}% 수준으로 {'높게' if diff_rate_3 > 0 else '낮게'} 나타났습니다."
                 )
 
-            # (5) 상관 계정과 반대 방향
             if sign_diff_strong and partner_acc is not None and pd.notna(partner_z):
                 tags.append("상관 계정과 반대 움직임")
                 reason_list.append(
@@ -673,7 +693,6 @@ def build_human_explanations(df):
                     f"(당월 z-score={z:.2f}, 상대 계정 z-score={partner_z:.2f})."
                 )
 
-            # (6) 원래 변동성이 거의 없는 계정
             if pd.notna(cv) and cv < 0.1 and pd.notna(z) and abs(z) >= 2.0:
                 tags.append("저변동 계정의 이례적 변동")
                 reason_list.append(
@@ -681,26 +700,13 @@ def build_human_explanations(df):
                     "이번 달에 예외적으로 큰 변동이 발생했습니다."
                 )
 
-            # (7) 모델(IF/LOF) 기반 이상치
             if anomaly_flag_base:
                 tags.append("모델 이상치 탐지")
                 reason_list.append(
                     "비지도 학습 기반 이상치 탐지 모델(IF/LOF 앙상블)이 "
-                    f"다른 월과의 패턴을 비교한 결과, 재무 패턴이 비정상적으로 멀리 떨어져 있다고 판단했습니다 "
+                    f"패턴이 비정상적으로 멀리 떨어져 있다고 판단했습니다 "
                     f"(IF score={iso_s:.3f}, LOF score={lof_s:.3f})."
                 )
-
-            # 0/빈칸 이상치인데 아직 관련 설명이 없으면 한 줄 더
-            if force_zero_anomaly and not any("0" in r or "미입력" in r for r in reason_list):
-                extra = "과거에는 금액이 있었던 계정인데 이번 달은 0 또는 미입력(공백)으로 기록되었습니다."
-                if n3 > 0 or n6 > 0:
-                    extra_detail = ""
-                    if n3 > 0:
-                        extra_detail += f" 직전 3개월 중 {zero3}개월만 0원이었습니다."
-                    if n6 > 0:
-                        extra_detail += f" 직전 6개월 기준으로는 {n6}개월 중 {zero6}개월이 0원이었습니다."
-                    extra += extra_detail
-                reason_list.append(extra)
 
             if not reason_list:
                 tags.append("통계적 기준 이상")
@@ -709,15 +715,10 @@ def build_human_explanations(df):
                     "이례적인 값으로 판단됩니다."
                 )
 
-        # ====================================
-        # 3) 정상 행
-        # ====================================
         if issue_type == "정상":
             tags.append("정상")
             if not reason_list:
-                reason_list.append(
-                    "통계적 패턴 기준으로 특별한 이상이 감지되지 않았습니다."
-                )
+                reason_list.append("통계적 패턴 기준으로 특별한 이상이 감지되지 않았습니다.")
             severity = 1
 
         issue_types.append(issue_type)
@@ -733,23 +734,19 @@ def build_human_explanations(df):
     return df
 
 
-
 # ============================================================
 # 7. 엑셀 리포트 저장 (단독 분석 스크립트용 유틸)
 # ============================================================
-
 def save_report(df, output_path="AI_anomaly_report.xlsx", target_ym=None):
     df = df.copy()
     df["year_month"] = df["year_month"].astype(str)
     df["is_issue"] = df["issue_type"] != "정상"
 
-    # 월 필터링
     if target_ym:
         df_month = df[df["year_month"] == target_ym].copy()
     else:
         df_month = df.copy()
 
-    # --- (1) 행 단위 요약 시트 ---
     summary_cols = [
         "cost_center", "cc_name",
         "year_month", "year", "month",
@@ -769,14 +766,12 @@ def save_report(df, output_path="AI_anomaly_report.xlsx", target_ym=None):
         ["year", "month", "cost_center", "account_code"]
     )
 
-    # --- (2) 이상/결측 행만 시트 ---
     issues_df = df_month[df_month["is_issue"]].copy()
     issues_df = issues_df.sort_values(
         ["severity_rank", "year", "month", "cost_center", "account_code"],
         ascending=[False, True, True, True, True]
     )
 
-    # --- (3) 센터별 이슈 집계 시트 ---
     center_group = df_month.groupby(["cost_center", "cc_name"], dropna=False)
     center_issue = center_group["is_issue"].sum()
     center_cnt   = center_group["is_issue"].count()
@@ -790,7 +785,6 @@ def save_report(df, output_path="AI_anomaly_report.xlsx", target_ym=None):
         "issue_ratio": center_rate.values,
     }).sort_values("issue_ratio", ascending=False)
 
-    # --- (4) 계정별 이슈 집계 시트 (코스트센터까지 포함해서 집계) ---
     acc_group = df_month.groupby(
         ["cost_center", "cc_name", "account_code", "account_name"],
         dropna=False
@@ -812,7 +806,6 @@ def save_report(df, output_path="AI_anomaly_report.xlsx", target_ym=None):
         ascending=[False, True, True]
     )
 
-    # --- 엑셀 저장 ---
     with pd.ExcelWriter(output_path) as writer:
         summary_df.to_excel(writer, sheet_name="요약", index=False)
         issues_df.to_excel(writer, sheet_name="이상_결측_행만", index=False)
@@ -826,9 +819,8 @@ def save_report(df, output_path="AI_anomaly_report.xlsx", target_ym=None):
 
 
 # ============================================================
-# 8. 터미널 요약 (단독 실행 디버깅용)
+# 8. 터미널 요약
 # ============================================================
-
 def print_terminal_summary(df):
     total = len(df)
     issues = (df["issue_type"] != "정상").sum()
@@ -841,35 +833,11 @@ def print_terminal_summary(df):
     print(f"   · 결측 의심: {missing_issues:,}건")
     print(f"   · 이상치 의심: {anomaly_issues:,}건")
 
-    if "cost_nature" in df.columns:
-        print("\n[비용 성질별 이슈 비율]")
-        nature_stats = []
-        for nature, grp in df.groupby("cost_nature", dropna=False):
-            n = len(grp)
-            if n == 0:
-                continue
-            issue_cnt = (grp["issue_type"] != "정상").sum()
-            nature_stats.append((nature, n, issue_cnt, issue_cnt / float(n)))
-        nature_stats.sort(key=lambda x: -x[3])
-        for nature, n, cnt, ratio in nature_stats:
-            label = nature if pd.notna(nature) and str(nature) != "nan" else "(미분류)"
-            print(f" - {label}: 이슈 {cnt:4d} / {n:4d} ({ratio*100:5.1f}%)")
-
-    if "corr_weight" in df.columns:
-        high_corr = df[df["corr_weight"] >= 0.9]
-        if not high_corr.empty:
-            sign_diff_cnt = high_corr["sign_diff_with_partner"].sum()
-            print("\n[상관계수 0.9 이상 계정들 중 패턴 반전 사례]")
-            print(f" - 상관계수 ≥ 0.9 대상 행 수: {len(high_corr):,}건")
-            print(f" - 그 중 방향 반전(sign_diff) 플래그: {sign_diff_cnt:,}건")
-
 
 # ============================================================
-# 9. 메인 (단독 실행용 – Flask에서는 import만 사용)
+# 9. 메인 (단독 실행용)
 # ============================================================
-
 def main():
-    # 필요하면 파일명 여기서 바꿔줘
     excel_path = "centercost_data.xlsx"
 
     print("[1] 엑셀 파싱중...")
