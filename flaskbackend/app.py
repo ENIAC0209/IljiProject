@@ -1408,15 +1408,7 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
         lb3 = row.get("lookback3_has_value")
         lb12 = row.get("lookback12_has_value")
 
-        reason_summary = _summarize_reason(
-    reason_kor, reason_tags, display_issue_type,
-    mom_pct, lb3, lb12,
-    zscore_12=row.get("zscore_12"),
-    dev_3m=row.get("dev_3m"),
-    iso_score=row.get("iso_score"),
-    lof_score=row.get("lof_score"),
-    corr_score=row.get("corr_score") or row.get("corr_anom_score"),
-)
+        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type, mom_pct, lb3, lb12)
 
         issues.append(
             {
