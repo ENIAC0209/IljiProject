@@ -310,7 +310,7 @@ const SD_DOC_TYPE_LABELS = {
   JRE: "표준 오더",
   JREW: "표준 오더",
   JSDC: "대변 메모 요청",
-  JSDD: "대변 메모 요청",
+  JSDD: "차변 메모 요청",
   JSDQ: "출하후지급 수량 계약",
   JSMC: "대변 메모 요청",
   JST1: "",
@@ -865,7 +865,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     text: "#0f172a",
     sub: "#475569",
     mute: "#94a3b8",
-    shadow: "0 0 0 rgba(0,0,0,0)", // 각진 느낌: 그림자 최소화
+    shadow: "0 0 0 rgba(0,0,0,0)",
     shadow2: "0 0 0 rgba(0,0,0,0)",
     radius: 4,
     radius2: 4,
@@ -1007,7 +1007,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
   const LabelRow = ({ left, right }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-      <div style={{ fontSize: 12, color: UI.sub, fontWeight: 900, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{left}</div>
+      <div style={{ fontSize: 12, color: UI.sub, fontWeight: 900, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {left}
+      </div>
       <div style={{ fontSize: 12, color: UI.text, fontWeight: 950, whiteSpace: "nowrap" }}>{right}</div>
     </div>
   );
@@ -1044,8 +1046,6 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
   /* ============================
    * ✅ 워터폴: “납작해짐” 해결
-   * - SVG를 컨테이너 폭에 억지로 찌그러뜨리지 않고
-   *   고정 픽셀로 렌더링 + 가로 스크롤
    * ============================ */
   const WaterfallPL = ({ height = 460, colNameOverride = null }) => {
     const col = colNameOverride || summaryColName;
@@ -1089,7 +1089,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const maxAbs = Math.max(...points.map((p) => Math.max(Math.abs(p.from), Math.abs(p.to))), 1);
 
     const pad = 18;
-    const per = 140; // ✅ 더 넓게: 글자/막대 펼침
+    const per = 140;
     const w = pad * 2 + points.length * per;
     const h = height;
 
@@ -1492,6 +1492,48 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   // ✅ 조건 화면 워터폴에 적용할 컬럼 (상단 detailPickAll과 동기화)
   const condWaterfallCol = useMemo(() => getDetailCol(detailPickAll), [effectiveCond, detailPickAll]); // eslint-disable-line
 
+  // ✅ (복구) 세부조건 컨트롤 UI를 “항상” 렌더링하기 위한 플래그/컴포넌트
+  const shouldShowDetailPicker = effectiveCond !== "전체";
+
+  const DetailPickerBar = ({ compact = false }) => {
+    if (!shouldShowDetailPicker) return null;
+
+    return (
+      <div
+        style={{
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "flex-end",
+          gap: 10,
+          flexWrap: "wrap",
+          padding: compact ? "10px 12px" : "0px",
+          border: compact ? UI.border : "none",
+          background: compact ? "#fff" : "transparent",
+          borderRadius: compact ? UI.radius2 : 0,
+        }}
+      >
+        <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900, whiteSpace: "nowrap" }}>
+          세부조건 선택 → 워터폴 + 4-1~4-4 동기화
+        </div>
+        <MiniSelect
+          value={detailPickAll}
+          onChange={(e) => setDetailPickAll(e.target.value)}
+          options={
+            <>
+              <option value="전체">세부조건: 전체(조건_전체)</option>
+              {conditionDetailCodes.map((o) => (
+                <option key={o.code} value={o.code}>
+                  세부조건: {o.label}
+                </option>
+              ))}
+            </>
+          }
+        />
+      </div>
+    );
+  };
+
   // -----------------------------
   // 렌더
   // -----------------------------
@@ -1534,8 +1576,8 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
               ⬇ EXPORT
             </button>
 
-            {/* ✅ 요청: 상단에서 세부조건 하나 선택하면 4-1~4-4 + 워터폴이 한꺼번에 바뀜 */}
-            {effectiveCond !== "전체" && (
+            {/* ✅ (유지) showCondBar=true일 때: 상단에서 세부조건 선택 */}
+            {shouldShowDetailPicker && (
               <MiniSelect
                 value={detailPickAll}
                 onChange={(e) => setDetailPickAll(e.target.value)}
@@ -1580,10 +1622,11 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           borderRadius: UI.radius2,
         }}
       >
+        {/* ✅ (복구) showCondBar=false여도 “세부조건 리스트박스”가 사라지지 않도록 export영역 상단에 추가 */}
+        {!showCondBar && shouldShowDetailPicker && <DetailPickerBar compact />}
+
         {/* KPI 4 (매출/영업이익/당기순이익/영업비용) */}
         <GridRow min={300} gap={12}>
-          {/* ✅ 요청: 당월 매출액 숫자 크기 다른 KPI와 동일(18)
-              ✅ 요청: 국내/수출 %는 “당월 매출액” 옆(헤더 right) */}
           <Card
             kicker="Revenue"
             title="당월 매출액 (선택 조건)"
@@ -1598,7 +1641,6 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
               <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div style={{ fontSize: 18, fontWeight: 950, color: UI.text, lineHeight: 1.1 }}>{formatNumber(totalSalesAll)} 원</div>
 
-                {/* 금액 라인(우측) 유지 */}
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
                   <div style={{ fontSize: 12, color: UI.sub, fontWeight: 950, whiteSpace: "nowrap" }}>
                     국내 {formatNumber(domesticSales)}
@@ -1656,7 +1698,6 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
                 </div>
 
                 <div style={{ border: UI.border, background: "#fff", padding: 12 }}>
-                  {/* ✅ 요청: 국내/수출 상단 회색 전체 바 제거(showSegment=false) */}
                   <TotalSalesDetailSegment title="국내매출 세부 항목" totalValue={domesticDetail.total} items={domesticDetail_salesShare.items} showSegment={false} />
                 </div>
 
@@ -1668,9 +1709,13 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           </>
         )}
 
-        {/* ✅ 조건별: 워터폴도 상단 “세부조건(detailPickAll)”과 동기화 */}
+        {/* ✅ 조건별: 워터폴도 “세부조건(detailPickAll)”과 동기화 */}
         {effectiveCond !== "전체" && (
-          <Card kicker="Bridge" title={`조건별 손익 워터폴 — ${effectiveCond}`}>
+          <Card
+            kicker="Bridge"
+            title={`조건별 손익 워터폴 — ${effectiveCond}`}
+            right={<Pill text={`세부조건: ${detailPickAll === "전체" ? "전체" : detailPickAll}`} tone="slate" />}
+          >
             <WaterfallPL height={460} colNameOverride={condWaterfallCol} />
           </Card>
         )}
