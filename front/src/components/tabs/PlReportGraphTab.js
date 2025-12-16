@@ -559,6 +559,168 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     return v;
   };
 
+  /* =========================================================
+   * ✅ (수정) "전월"은 선택한 월의 직전월 데이터를 의미
+   *  - 데이터에 전월 컬럼명이 고정(전월/prev/PM)인 경우도 지원
+   *  - 데이터가 "YYYY-MM" / "YYYYMM" / "YY-MM" 등 월표기 컬럼을 갖는 경우도 지원
+   *  - (핵심) selectedYear/selectedMonth 기반으로 "직전월" 컬럼을 찾아줌
+   * ========================================================= */
+
+  const toInt = (v) => {
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  };
+
+  const getPrevYM = (y, m) => {
+    const yy = toInt(y);
+    const mm = toInt(m);
+    if (!yy || !mm) return null;
+    let py = yy;
+    let pm = mm - 1;
+    if (pm <= 0) {
+      py = yy - 1;
+      pm = 12;
+    }
+    return { y: py, m: pm };
+  };
+
+  const buildYmVariants = (y, m) => {
+    const yy = toInt(y);
+    const mm = toInt(m);
+    if (!yy || !mm) return [];
+    const mm2 = String(mm).padStart(2, "0");
+    const yy2 = String(yy).slice(-2);
+
+    // 다양한 표기(데이터 컬럼명 케이스 대응)
+    return [
+      `${yy}-${mm2}`, // 2025-10
+      `${yy}_${mm2}`, // 2025_10
+      `${yy}.${mm2}`, // 2025.10
+      `${yy}/${mm2}`, // 2025/10
+      `${yy}${mm2}`, // 202510
+      `${yy2}-${mm2}`, // 25-10
+      `${yy2}.${mm2}`, // 25.10
+      `${yy2}${mm2}`, // 2510
+      `${yy}년${mm}월`, // 2025년10월
+      `${yy}년${mm2}월`, // 2025년10월(0패딩)
+      `${mm}월`, // 10월
+      `${mm2}월`, // 10월
+    ];
+  };
+
+  // ✅ (핵심) 전월 컬럼 탐색: "고정 전월 컬럼" + "직전월 표기 컬럼" 둘 다 지원
+  const findPrevColName = (rowObj, colName) => {
+    if (!rowObj || !colName) return null;
+    const keys = Object.keys(rowObj);
+
+    // 0) 가장 명시적인 고정 전월 컬럼 패턴(기존 유지)
+    const directCandidates = [
+      `${colName}_전월`,
+      `${colName}_전월값`,
+      `${colName}_prev`,
+      `${colName}_Prev`,
+      `${colName}_previous`,
+      `${colName}_PM`,
+      "전월",
+      "전월_전체",
+      "prev",
+      "Prev",
+      "previous",
+      "PM",
+    ];
+    for (const k of directCandidates) {
+      if (keys.includes(k)) return k;
+    }
+
+    // 1) 조건 prefix 기반(기존 유지)
+    const parts = String(colName).split("_");
+    const prefix = parts.length >= 2 ? `${parts[0]}_` : "";
+    if (prefix) {
+      const prefHits = keys.filter(
+        (k) =>
+          k.startsWith(prefix) &&
+          (k.includes("전월") || k.toLowerCase().includes("prev") || k.includes("PM") || k.toLowerCase().includes("pm"))
+      );
+      if (prefHits.length) return prefHits[0];
+    }
+
+    // 2) ✅ "선택월 → 직전월" 기반 월 표기 컬럼 탐색 (이번 요청의 핵심)
+    //    - colName(예: 전체 / 플랜트_전체 / 플랜트_1010 등)과 결합된 형태까지 최대한 매칭
+    const prevYM = getPrevYM(selectedYear, selectedMonth);
+    if (prevYM) {
+      const prevVariants = buildYmVariants(prevYM.y, prevYM.m);
+      const curVariants = buildYmVariants(selectedYear, selectedMonth);
+
+      const normalize = (s) => String(s).replace(/\s+/g, "").toLowerCase();
+
+      const keyNorm = keys.map((k) => ({ k, n: normalize(k) }));
+
+      const colNorm = normalize(colName);
+
+      // (a) colName 자체에 선택월 표기가 포함된 경우 → 그 표기를 직전월 표기로 치환해보기
+      // 예: "2025-11_전체" → "2025-10_전체"
+      for (const curV of curVariants) {
+        const curN = normalize(curV);
+        if (!curN) continue;
+        if (colNorm.includes(curN)) {
+          for (const prevV of prevVariants) {
+            const cand = normalize(colName).replace(curN, normalize(prevV));
+            const hit = keyNorm.find((x) => x.n === cand);
+            if (hit) return hit.k;
+          }
+        }
+      }
+
+      // (b) "colName + 직전월 표기"가 섞여있는 컬럼 찾기
+      //     - 다양한 순서(YYYY-MM이 앞/뒤)까지 허용
+      //     - prefix(예: 플랜트_)는 유지하는 쪽을 우선
+      const hasPrefix = prefix ? normalize(prefix) : "";
+      const scored = [];
+
+      for (const x of keyNorm) {
+        // 직전월 표기 포함 여부
+        const hasPrev = prevVariants.some((pv) => x.n.includes(normalize(pv)));
+        if (!hasPrev) continue;
+
+        // colName(또는 prefix) 유사도 점수
+        let score = 0;
+        if (x.n.includes(colNorm)) score += 5;
+        if (hasPrefix && x.n.includes(hasPrefix)) score += 3;
+
+        // "전체" 기반 요약값이면 _전체 포함 컬럼 가중
+        if (colName.endsWith("_전체") || colName === "전체") {
+          if (x.n.includes(normalize("전체"))) score += 2;
+        }
+
+        // 직전월 표기 + colName이 동시에 들어있으면 우선
+        scored.push({ key: x.k, score });
+      }
+
+      scored.sort((a, b) => b.score - a.score);
+      if (scored.length && scored[0].score > 0) return scored[0].key;
+
+      // (c) 마지막 fallback: 직전월 표기만 있는 컬럼이라도 하나 집기(정말 없을 때)
+      const anyPrev = keyNorm.find((x) => prevVariants.some((pv) => x.n.includes(normalize(pv))));
+      if (anyPrev) return anyPrev.k;
+    }
+
+    return null;
+  };
+
+  const getPrevValue = (itemName, colOverride = null) => {
+    if (!hasData) return null;
+    const colName = colOverride || summaryColName;
+    const row = rows.find((r) => (r["항목"] || "").trim() === itemName) || null;
+    if (!row) return null;
+
+    const prevCol = findPrevColName(row, colName);
+    if (!prevCol) return null;
+
+    const v = Number(row[prevCol]);
+    if (Number.isNaN(v)) return null;
+    return v;
+  };
+
   const formatNumber = (v) => {
     if (v === null || v === undefined || v === "" || Number.isNaN(v)) return "-";
     return Number(v).toLocaleString("ko-KR");
@@ -576,6 +738,14 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     if (Number.isNaN(num)) return "-";
     const sign = num > 0 ? "+" : "";
     return `${sign}${num.toFixed(1)}%`;
+  };
+
+  const formatDeltaRateFromPrev = (cur, prev) => {
+    const c = Number(cur);
+    const p = Number(prev);
+    if (Number.isNaN(c) || Number.isNaN(p) || p === 0) return "-";
+    const r = ((c - p) / Math.abs(p)) * 100;
+    return formatRate(r);
   };
 
   const getIndentLevel = (rawName) => {
@@ -642,6 +812,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     return { total: parentValue, items: withShare };
   };
 
+  // ✅ (수정) 조건 Top10: "국내/수출"은 항상 '전체 매출액(동일 조건_전체)' 대비 비율로 계산
   const getConditionTop10ByItem = (itemName) => {
     if (!hasData || effectiveCond === "전체") return { total: 0, items: [] };
 
@@ -652,7 +823,13 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const totalCol = `${effectiveCond}_전체`;
 
     const cols = Object.keys(rows[0] || {}).filter((c) => c.startsWith(prefix) && c !== totalCol);
-    const total = Number(row[totalCol]) || 0;
+
+    const itemTotal = Number(row[totalCol]) || 0;
+
+    // ✅ 전체 매출액(조건_전체) 기준 (국내/수출에서만 사용)
+    const totalSalesForCond = getValue("매출액", totalCol) || 0;
+    const isSalesMixItem = itemName === "국내매출액" || itemName === "수출매출액";
+    const baseForShare = isSalesMixItem ? totalSalesForCond : itemTotal;
 
     const items = cols
       .map((col) => {
@@ -663,14 +840,15 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           code,
           label: getCodeLabel(effectiveCond, code),
           value,
-          share: total ? (value / total) * 100 : 0,
+          // ✅ 여기서 share가 "표기되는 %"
+          share: baseForShare ? (value / baseForShare) * 100 : 0,
         };
       })
       .filter((d) => d.value !== 0)
       .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
       .slice(0, 10);
 
-    return { total, items };
+    return { total: itemTotal, items };
   };
 
   // -----------------------------
@@ -693,11 +871,13 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
   const cogs = getValue("매출원가계");
   const sga = getValue("판매비와일반관리비");
-  const gross = getValue("매출총이익"); // 유지
+  const gross = getValue("매출총이익");
 
   // ✅ 영업비용 = 매출원가계 + 판관비, 영업비용률 = (원가+판관비)/매출
   const operatingCost = (Number(cogs) || 0) + (Number(sga) || 0);
   const operatingCostRatio = totalSalesAll ? (operatingCost / totalSalesAll) * 100 : 0;
+
+  const grossMargin = totalSalesAll ? (gross / totalSalesAll) * 100 : 0;
 
   // -----------------------------
   // 1) 손익 구조 시리즈(유지)
@@ -760,6 +940,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, effectiveCond, hasData]);
 
+  // ✅ (수정 반영) 국내/수출 Top10도 "전체 매출액(조건_전체)" 대비 share로 계산됨
   const conditionDomesticTop10 = useMemo(() => {
     if (effectiveCond === "전체") return { total: 0, items: [] };
     return getConditionTop10ByItem("국내매출액");
@@ -1045,7 +1226,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   };
 
   /* ============================
-   * ✅ 워터폴: “납작해짐” 해결
+   * ✅ 워터폴: 컨테이너 폭에 “꽉 차게” (공백 제거)
    * ============================ */
   const WaterfallPL = ({ height = 460, colNameOverride = null }) => {
     const col = colNameOverride || summaryColName;
@@ -1088,14 +1269,38 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
     const maxAbs = Math.max(...points.map((p) => Math.max(Math.abs(p.from), Math.abs(p.to))), 1);
 
+    const wrapRef = useRef(null);
+    const [wrapW, setWrapW] = useState(0);
+
+    useEffect(() => {
+      if (!wrapRef.current) return;
+      const el = wrapRef.current;
+
+      const ro = new ResizeObserver((entries) => {
+        const w = entries?.[0]?.contentRect?.width || 0;
+        setWrapW(w);
+      });
+
+      ro.observe(el);
+      return () => ro.disconnect();
+    }, []);
+
     const pad = 18;
-    const per = 140;
-    const w = pad * 2 + points.length * per;
+    const labelH = 40;
     const h = height;
 
-    const labelH = 40;
-    const chartH = h - pad * 2 - labelH;
+    const minPer = 110;
+    const maxPer = 180;
 
+    const effectiveW = Math.max(0, wrapW || 0);
+    const usableW = Math.max(1, effectiveW - pad * 2);
+    const autoPer = usableW / points.length;
+    const per = Math.max(minPer, Math.min(maxPer, autoPer));
+
+    const needScroll = pad * 2 + points.length * per > effectiveW + 1;
+    const w = pad * 2 + points.length * per;
+
+    const chartH = h - pad * 2 - labelH;
     const topY = pad;
     const bottomY = pad + chartH;
 
@@ -1105,8 +1310,8 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const scaleDown = (bottomY - zeroY) / maxAbs;
     const scale = Math.min(scaleUp, scaleDown);
 
-    const gap = 18;
-    const barW = Math.max(68, per - gap);
+    const gap = Math.max(14, Math.min(22, per * 0.16));
+    const barW = Math.max(62, per - gap);
 
     const yOf = (v) => zeroY - v * scale;
 
@@ -1116,8 +1321,21 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     };
 
     return (
-      <div style={{ width: "100%", overflowX: "auto", paddingBottom: 2 }}>
-        <svg width={w} height={h} style={{ display: "block" }}>
+      <div
+        ref={wrapRef}
+        style={{
+          width: "100%",
+          overflowX: needScroll ? "auto" : "hidden",
+          paddingBottom: 2,
+        }}
+      >
+        <svg
+          width={needScroll ? w : "100%"}
+          height={h}
+          viewBox={needScroll ? `0 0 ${w} ${h}` : `0 0 ${w} ${h}`}
+          preserveAspectRatio="none"
+          style={{ display: "block" }}
+        >
           <rect x="0" y="0" width={w} height={h} rx={UI.radius2} fill="#fff" stroke="#e2e8f0" />
 
           {[0, 0.25, 0.5, 0.75, 1].map((k) => {
@@ -1280,14 +1498,19 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     );
   };
 
-  const ConditionSegmentWithList = ({ title, data }) => {
+  const ConditionSegmentWithList = ({ title, data, note = null }) => {
     const items = data?.items || [];
     const total = data?.total || 0;
 
     return (
       <div style={{ width: "100%", minWidth: 0, border: UI.border, background: "#fff", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>{title} Top 10</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+            <div style={{ fontSize: 13, fontWeight: 950, color: UI.text, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {title} Top 10
+            </div>
+            {note && <div style={{ fontSize: 11, color: UI.mute, fontWeight: 900 }}>{note}</div>}
+          </div>
           <div style={{ fontSize: 12, color: UI.mute, whiteSpace: "nowrap", fontWeight: 900 }}>합계 {formatNumber(total)}</div>
         </div>
 
@@ -1349,7 +1572,6 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     return { ...detailGroup, items };
   };
 
-  // ✅ 요청: 국내/수출 세부 항목 상단 “회색 전체 바” 제거 → showSegment 옵션
   const TotalSalesDetailSegment = ({ title, totalValue, items, showSegment = false }) => {
     const safeItems = items || [];
     return (
@@ -1373,7 +1595,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {safeItems.map((it) => {
-                const pct = Number(it.shareSales ?? it.share) || 0;
+                const pct = Number(it.shareSales ?? 0) || 0;
                 const pctAbs = Math.max(0, Math.min(Math.abs(pct), 100));
                 return (
                   <div key={it.name} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1381,7 +1603,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
                       left={it.name}
                       right={
                         <>
-                          {formatNumber(it.value)} <span style={{ color: UI.mute, fontWeight: 900 }}>({pct.toFixed(1)}%)</span>
+                          {formatNumber(it.value)} <span style={{ color: UI.mute, fontWeight: 900 }}>(매출액 대비 {pct.toFixed(1)}%)</span>
                         </>
                       }
                     />
@@ -1489,10 +1711,8 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   const domesticDetail_salesShare = useMemo(() => withSalesShare({ ...domesticDetail, items: domesticItemsFiltered }, summaryColName), [domesticDetail, summaryColName]); // eslint-disable-line
   const exportDetail_salesShare = useMemo(() => withSalesShare({ ...exportDetail, items: exportItemsFiltered }, summaryColName), [exportDetail, summaryColName]); // eslint-disable-line
 
-  // ✅ 조건 화면 워터폴에 적용할 컬럼 (상단 detailPickAll과 동기화)
   const condWaterfallCol = useMemo(() => getDetailCol(detailPickAll), [effectiveCond, detailPickAll]); // eslint-disable-line
 
-  // ✅ (복구) 세부조건 컨트롤 UI를 “항상” 렌더링하기 위한 플래그/컴포넌트
   const shouldShowDetailPicker = effectiveCond !== "전체";
 
   const DetailPickerBar = ({ compact = false }) => {
@@ -1513,9 +1733,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           borderRadius: compact ? UI.radius2 : 0,
         }}
       >
-        <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900, whiteSpace: "nowrap" }}>
-          세부조건 선택 → 워터폴 + 4-1~4-4 동기화
-        </div>
+        <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900, whiteSpace: "nowrap" }}>세부조건 선택 → 워터폴 + 4-1~4-4 동기화</div>
         <MiniSelect
           value={detailPickAll}
           onChange={(e) => setDetailPickAll(e.target.value)}
@@ -1534,6 +1752,134 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     );
   };
 
+  /* ============================
+   * ✅ 워터폴 오른쪽 "요약 인사이트"
+   *
+   * ✅ 변경사항(이번 요청):
+   *  - 당월 + 전월 금액 표시
+   *  - 전월 대비 증감률(%)를 괄호로 추가
+   * ============================ */
+  const BridgeInsightPanel = ({ colNameOverride = null }) => {
+    const col = colNameOverride || summaryColName;
+
+    const sales = getValue("매출액", col);
+    const grossV = getValue("매출총이익", col);
+    const opV = getValue("영업이익", col);
+    const netV = getValue("당기순이익", col);
+
+    const prevSales = getPrevValue("매출액", col);
+    const prevGross = getPrevValue("매출총이익", col);
+    const prevOp = getPrevValue("영업이익", col);
+    const prevNet = getPrevValue("당기순이익", col);
+
+    const sSafe = sales || 1;
+
+    const salesR = (sales / sSafe) * 100; // 100%
+    const grossR = (grossV / sSafe) * 100;
+    const opR = (opV / sSafe) * 100;
+    const netR = (netV / sSafe) * 100;
+
+    const gm = grossR;
+    const opm = opR;
+    const npm = netR;
+
+    const cogsV = getValue("매출원가계", col);
+    const sgaV = getValue("판매비와일반관리비", col);
+    const opCostV = (Number(cogsV) || 0) + (Number(sgaV) || 0);
+    const opCostR = (opCostV / sSafe) * 100;
+
+    const nonInc = getValue("영업외수익", col);
+    const nonExp = getValue("영업외비용", col);
+    const nonNet = -(Number(nonInc) || 0) - (Number(nonExp) || 0);
+    const nonNetR = (nonNet / sSafe) * 100;
+
+    const badgeTone = (v) => (v >= 0 ? "green" : "red");
+
+    const InsightRow = ({ left, cur, prev, ratioText, showMoM = true }) => {
+      const hasPrev = prev !== null && prev !== undefined && !Number.isNaN(Number(prev));
+      const mom = hasPrev ? formatDeltaRateFromPrev(cur, prev) : "-";
+      return (
+        <div style={{ padding: "6px 0" }}>
+          <LabelRow
+            left={left}
+            right={
+              <span style={{ fontWeight: 950 }}>
+                {formatNumber(cur)}
+                <span style={{ color: UI.mute, fontWeight: 900 }}>
+                  {" "}
+                  / 전월 {hasPrev ? formatNumber(prev) : "-"} {showMoM ? `(전월대비 ${mom})` : ""}
+                </span>
+                {ratioText ? <span style={{ color: UI.mute, fontWeight: 900 }}> · {ratioText}</span> : null}
+              </span>
+            }
+          />
+        </div>
+      );
+    };
+
+    return (
+      <div style={{ width: "100%", minWidth: 0, border: UI.border, background: "#fff", padding: 12, display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>요약 인사이트</div>
+          <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900, whiteSpace: "nowrap" }}>단위: 원 / %</div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <InsightRow left="매출액" cur={sales} prev={prevSales} ratioText={`(매출 대비 ${formatRate(salesR)})`} />
+          <InsightRow left="매출총이익" cur={grossV} prev={prevGross} ratioText={`(매출 대비 ${formatRate(grossR)})`} />
+          <InsightRow left="영업이익" cur={opV} prev={prevOp} ratioText={`(매출 대비 ${formatRate(opR)})`} />
+          <InsightRow left="당기순이익" cur={netV} prev={prevNet} ratioText={`(매출 대비 ${formatRate(netR)})`} />
+        </div>
+
+        <div style={{ borderTop: UI.border, paddingTop: 10, display: "flex", flexDirection: "column" }}>
+          <div style={{ padding: "6px 0" }}>
+            <LabelRow left="매출총이익률(GM)" right={<Pill text={formatRate(gm)} tone={gm >= 0 ? "blue" : "red"} />} />
+          </div>
+          <div style={{ padding: "6px 0" }}>
+            <LabelRow left="영업이익률(OPM)" right={<Pill text={formatRate(opm)} tone={opm >= 0 ? "blue" : "red"} />} />
+          </div>
+          <div style={{ padding: "6px 0" }}>
+            <LabelRow left="순이익률(NPM)" right={<Pill text={formatRate(npm)} tone={npm >= 0 ? "blue" : "red"} />} />
+          </div>
+          <div style={{ padding: "6px 0" }}>
+            <LabelRow left="영업비용률(원가+판관비)" right={<Pill text={formatRate(opCostR)} tone={"red"} />} />
+          </div>
+        </div>
+
+        <div style={{ borderTop: UI.border, paddingTop: 10, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900 }}>영업외손익 영향</div>
+
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+            <div style={{ fontSize: 12, color: UI.sub, fontWeight: 900 }}>영업외손익( -수익 - 비용 )</div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <Pill text={formatSigned(nonNet)} tone={badgeTone(nonNet)} />
+              <span style={{ fontSize: 12, color: UI.mute, fontWeight: 900 }}>매출 대비 {formatRate(nonNetR)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const WaterfallWithInsight = ({ colNameOverride = null }) => {
+    return (
+      <div
+        style={{
+          width: "100%",
+          display: "grid",
+          gridTemplateColumns: "minmax(520px, 2fr) minmax(320px, 1fr)",
+          gap: 12,
+          alignItems: "stretch",
+        }}
+      >
+        <div style={{ minWidth: 0 }}>
+          <WaterfallPL height={460} colNameOverride={colNameOverride} />
+        </div>
+        <BridgeInsightPanel colNameOverride={colNameOverride} />
+      </div>
+    );
+  };
+
   // -----------------------------
   // 렌더
   // -----------------------------
@@ -1543,7 +1889,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     </div>
   ) : (
     <div style={{ width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
-      {/* ✅ 상단 헤더: (기간) + (조건바 라인에 EXPORT + 세부조건 통합) */}
+      {/* ✅ 상단 헤더 */}
       <div
         style={{
           width: "100%",
@@ -1559,7 +1905,6 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           flexWrap: "wrap",
         }}
       >
-        {/* ✅ 기간만 좌측 */}
         <div style={{ fontSize: 12, color: UI.sub, fontWeight: 900, whiteSpace: "nowrap" }}>
           {selectedYear && selectedMonth ? (
             <>
@@ -1576,7 +1921,6 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
               ⬇ EXPORT
             </button>
 
-            {/* ✅ (유지) showCondBar=true일 때: 상단에서 세부조건 선택 */}
             {shouldShowDetailPicker && (
               <MiniSelect
                 value={detailPickAll}
@@ -1622,10 +1966,8 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           borderRadius: UI.radius2,
         }}
       >
-        {/* ✅ (복구) showCondBar=false여도 “세부조건 리스트박스”가 사라지지 않도록 export영역 상단에 추가 */}
         {!showCondBar && shouldShowDetailPicker && <DetailPickerBar compact />}
 
-        {/* KPI 4 (매출/영업이익/당기순이익/영업비용) */}
         <GridRow min={300} gap={12}>
           <Card
             kicker="Revenue"
@@ -1642,12 +1984,8 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
                 <div style={{ fontSize: 18, fontWeight: 950, color: UI.text, lineHeight: 1.1 }}>{formatNumber(totalSalesAll)} 원</div>
 
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  <div style={{ fontSize: 12, color: UI.sub, fontWeight: 950, whiteSpace: "nowrap" }}>
-                    국내 {formatNumber(domesticSales)}
-                  </div>
-                  <div style={{ fontSize: 12, color: UI.sub, fontWeight: 950, whiteSpace: "nowrap" }}>
-                    수출 {formatNumber(exportSales)}
-                  </div>
+                  <div style={{ fontSize: 12, color: UI.sub, fontWeight: 950, whiteSpace: "nowrap" }}>국내 {formatNumber(domesticSales)}</div>
+                  <div style={{ fontSize: 12, color: UI.sub, fontWeight: 950, whiteSpace: "nowrap" }}>수출 {formatNumber(exportSales)}</div>
                 </div>
               </div>
             </div>
@@ -1665,7 +2003,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
             </div>
           </Card>
 
-          <Card kicker="Cost" title="영업비용 (원가+판관비)" right={<Pill text={`영업비용률 ${formatRate(operatingCostRatio)}`} tone={operatingCostRatio >= 0 ? "red" : "blue"} />}>
+          <Card kicker="Cost" title="영업비용 (원가+판관비)" right={<Pill text={`영업비용률 ${formatRate(operatingCostRatio)}`} tone={"red"} />}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 72, justifyContent: "flex-start" }}>
               <div style={{ fontSize: 18, fontWeight: 950, color: Tone.red.fg }}>{formatNumber(operatingCost)} 원</div>
               <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900 }}>
@@ -1687,7 +2025,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
             </Card>
 
             <Card kicker="Bridge" title="손익 워터폴 — 매출 → 원가/판관비 → 순이익">
-              <WaterfallPL height={460} />
+              <WaterfallWithInsight colNameOverride={summaryColName} />
             </Card>
 
             <Card kicker="Sales Mix" title="매출 구조 — 전체 매출액 대비 비중 & 세부 구성">
@@ -1709,14 +2047,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           </>
         )}
 
-        {/* ✅ 조건별: 워터폴도 “세부조건(detailPickAll)”과 동기화 */}
         {effectiveCond !== "전체" && (
-          <Card
-            kicker="Bridge"
-            title={`조건별 손익 워터폴 — ${effectiveCond}`}
-            right={<Pill text={`세부조건: ${detailPickAll === "전체" ? "전체" : detailPickAll}`} tone="slate" />}
-          >
-            <WaterfallPL height={460} colNameOverride={condWaterfallCol} />
+          <Card kicker="Bridge" title={`조건별 손익 워터폴 — ${effectiveCond}`} right={<Pill text={`세부조건: ${detailPickAll === "전체" ? "전체" : detailPickAll}`} tone="slate" />}>
+            <WaterfallWithInsight colNameOverride={condWaterfallCol} />
           </Card>
         )}
 
@@ -1733,8 +2066,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
         {effectiveCond !== "전체" && (
           <Card kicker="Sales Mix" title={`조건별 국내/수출 매출 Top 10 — ${effectiveCond}`} right={<Pill text="Top10 누적 + 상세" tone="blue" />}>
             <GridRow min={520} gap={10}>
-              <ConditionSegmentWithList title="국내매출액" data={conditionDomesticTop10} />
-              <ConditionSegmentWithList title="수출매출액" data={conditionExportTop10} />
+              {/* ✅ note: '전체 매출액 대비' 명시 + share 계산은 위에서 이미 변경됨 */}
+              <ConditionSegmentWithList title="국내매출액" data={conditionDomesticTop10} note="※ %는 전체 매출액(조건_전체) 대비" />
+              <ConditionSegmentWithList title="수출매출액" data={conditionExportTop10} note="※ %는 전체 매출액(조건_전체) 대비" />
             </GridRow>
           </Card>
         )}
