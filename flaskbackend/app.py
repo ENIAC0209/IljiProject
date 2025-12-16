@@ -88,6 +88,8 @@ BACKDATA_EXCEL_PATH = BASE_DIR / "3back_data_with_fake11_v2.xlsx"
 REPORT_DATA_DIR = BASE_DIR / "report_data"
 REPORT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+BASE_EXCEL_PATH = str(BASE_DIR / "코스트센터_2년치_가상데이터_전체.xlsx")  # (선택) 2년치 기준 데이터(구버전 호환용)
+
 ADV_CLASS_XLSX_PATH = BASE_DIR / "코스트센터별_분류.xlsx"
 
 # ✅ 서버 시작 시 1회 모델 로딩

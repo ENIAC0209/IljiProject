@@ -2,7 +2,7 @@
 closing_forecast_model.py
 
 - 5년치 월간 데이터로 Prophet 학습 (타겟별 1개 시계열)
-- 타겟: 영업이익 / 매출총이익 / 당기순이익 / 판매비와일반관리비
+- 타겟: 영업이익 / 매출액 / 매출원가계 / 판매비와일반관리비
 - 마지막 N개월(test_horizon)을 test 구간으로 성능(MAE, RMSE, MAPE) 평가
 - n개월 예측
 - 시나리오(전력비, 총인건비, 원재료비, 부재료비 전체, 판관비 증감률)는
@@ -13,6 +13,12 @@ closing_forecast_model.py
   (yearly_seasonality / seasonality_mode / changepoint_prior_scale 조합 중
    RMSE가 가장 낮은 모델을 선택)
 - 이상치 클리핑 구간 10%~90% → 5%~95% 로 완화
+
+✅ 추가 수정(중요)
+- 시나리오 배율 해석을 "총배율 r"로 통일:
+  - 200% 입력 → r=2.0 (기존의 2배)
+  - 실제 반영 증감분은 base*(r-1)
+  - 기존 코드의 base*r 방식은 과반영 가능(특히 200%에서)
 """
 
 import os
@@ -39,8 +45,8 @@ MODEL_PATH = os.path.join(BASE_DIR, "closing_forecast_prophet_simple.pkl")
 # 🔧 예측 타겟 (성능 체크도 이 4개 기준)
 TARGET_COLS = [
     "영업이익",
-    "매출총이익",
-    "당기순이익",
+    "매출액",
+    "매출원가계",
     "판매비와일반관리비",
 ]
 
@@ -211,7 +217,6 @@ def _fit_best_prophet(
             best_metrics = mtr
             best_params = params
 
-    # 타입 힌트 상 Optional 처리했지만, 실제로는 하나는 항상 선택됨
     assert best_model is not None and best_metrics is not None and best_params is not None
     return best_model, best_metrics, best_params
 
@@ -222,7 +227,7 @@ def _fit_best_prophet(
 
 def train_prophet_models(test_horizon: int = 6) -> Dict[str, Any]:
     """
-    타겟 4개(영업이익/매출총이익/당기순이익/판관비)에 대해
+    타겟 4개(영업이익/매출액/매출원가계/판관비)에 대해
     Prophet 단변량 학습 + 성능 평가.
     하이퍼파라미터는 PARAM_GRID에서 자동 선택.
     """
@@ -261,7 +266,7 @@ def train_prophet_models(test_horizon: int = 6) -> Dict[str, Any]:
     else:
         df["부재료비_전체"] = 0.0
 
-    numeric_cols = TARGET_COLS + SCENARIO_BASE_COLS + ["매출원가계", "매출원가"]
+    numeric_cols = TARGET_COLS + SCENARIO_BASE_COLS + ["매출원가계", "매출원가", "매출액"]
     for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
@@ -397,9 +402,19 @@ def _apply_scenario_postprocess(
     scenario: Dict[str, float],
     scenario_stats: Dict[str, float],
 ) -> Dict[str, float]:
+    """
+    시나리오 값은 프론트에서 '총배율 r'로 들어온다고 가정.
+      - 예: 200% 입력 -> 2.0
+      - 예: 50% 입력 -> 0.5
+
+    ✅ 반영 규칙(중요):
+      - r배로 "맞추는" 것이므로 실제 증감분은 base*(r-1)
+      - (기존 코드처럼 base*r를 더하면 200%에서 과반영될 수 있음)
+    """
     if not scenario:
         return row
 
+    # 프론트 key -> 실제 컬럼명 정규화
     normalized: Dict[str, float] = {}
     for k, v in scenario.items():
         col = SCENARIO_ALIAS.get(k, k)
@@ -408,29 +423,30 @@ def _apply_scenario_postprocess(
         except Exception:
             continue
 
+    # 베이스(예측값) 꺼내기
+    sales = float(row.get("매출액", 0.0))
     sga = float(row.get("판매비와일반관리비", 0.0))
     op = float(row.get("영업이익", 0.0))
-    net = float(row.get("당기순이익", 0.0))
-    gp = float(row.get("매출총이익", 0.0))
 
+    # 매출원가계가 없으면 매출원가 fallback
     cogs = float(row.get("매출원가계", row.get("매출원가", 0.0)))
-    if cogs <= 0:
-        cogs = abs(gp) * 1.2 if gp != 0 else 1.0
+
+    # 분모가 0일 때를 대비한 fallback
+    sga_safe = sga if sga != 0 else 1.0
+    cogs_safe = cogs if cogs != 0 else (abs(sales) * 0.7 if sales != 0 else 1.0)
 
     delta_sga = 0.0
-    delta_op = 0.0
-    delta_gp = 0.0
     delta_cogs = 0.0
+    delta_op = 0.0
 
-    # 판관비 전체
+    # 1) 판관비(전체) 직접 조정: sga를 r배로 맞춤
     if "판매비와일반관리비" in normalized:
         r = normalized["판매비와일반관리비"]
-        d = sga * r
+        d = sga * (r - 1.0)   # ✅ 수정
         delta_sga += d
         delta_op -= d
-        delta_gp -= d
 
-    # 전력비 / 총인건비 → 판관비 비중 기반
+    # 2) 전력비 / 총인건비 → 판관비 내 비중 기반
     sga_default_share = {
         "전력비": 0.07,
         "총인건비": 0.35,
@@ -445,13 +461,12 @@ def _apply_scenario_postprocess(
         if share <= 0:
             share = sga_default_share.get(cost_col, 0.1)
 
-        base = sga * share
-        d = base * r
+        base = sga_safe * share
+        d = base * (r - 1.0)  # ✅ 수정
         delta_sga += d
         delta_op -= d
-        delta_gp -= d
 
-    # 원재료비 / 부재료비_전체 → 매출원가 기반
+    # 3) 원재료비 / 부재료비_전체 → 매출원가 내 비중 기반
     cogs_default_share = {
         "원재료비": 0.6,
         "부재료비_전체": 0.2,
@@ -466,22 +481,23 @@ def _apply_scenario_postprocess(
         if share <= 0:
             share = cogs_default_share.get(cost_col, 0.1)
 
-        base = cogs * share
-        d = base * r
-
+        base = cogs_safe * share
+        d = base * (r - 1.0)  # ✅ 수정
         delta_cogs += d
-        delta_gp -= d
         delta_op -= d
 
-    row["판매비와일반관리비"] = sga + delta_sga
-    row["매출총이익"] = gp + delta_gp
-    row["영업이익"] = op + delta_op
-    row["당기순이익"] = net + delta_op
+    # 결과 반영
+    row["판매비와일반관리비"] = float(row.get("판매비와일반관리비", 0.0)) + delta_sga
 
     if "매출원가계" in row:
-        row["매출원가계"] = cogs + delta_cogs
+        row["매출원가계"] = float(row.get("매출원가계", 0.0)) + delta_cogs
     else:
-        row["매출원가"] = cogs + delta_cogs
+        row["매출원가"] = float(row.get("매출원가", 0.0)) + delta_cogs
+
+    row["영업이익"] = op + delta_op
+
+    # 매출액은 비용 시나리오로는 기본적으로 변하지 않음(그대로 유지)
+    row["매출액"] = sales
 
     return row
 
@@ -523,10 +539,6 @@ def forecast_next_n(
 
     return results
 
-
-# =========================================================
-# 단독 실행 테스트용 (성능 출력만)
-# =========================================================
 
 if __name__ == "__main__":
     payload = load_or_train()
