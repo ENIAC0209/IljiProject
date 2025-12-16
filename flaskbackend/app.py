@@ -76,7 +76,7 @@ from models.closing_forecast_model import (
 import pymysql
 from werkzeug.security import check_password_hash, generate_password_hash
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
 
 CACHE_DIR = BASE_DIR / "cache"
@@ -2035,6 +2035,19 @@ def test_db_connection():
         except Exception:
             pass
 
+from flask import send_from_directory
+
+@app.route("/")
+@app.route("/<path:path>")
+def serve_react(path="index.html"):
+    if path.startswith("api"):
+        return "Not Found", 404
+
+    file_path = os.path.join(app.static_folder, path)
+    if path != "" and os.path.exists(file_path):
+        return send_from_directory(app.static_folder, path)
+
+    return send_from_directory(app.static_folder, "index.html")
 
 if __name__ == "__main__":
     print("[INFO] Flask 서버 시작")
