@@ -11,90 +11,90 @@ import jsPDF from "jspdf";
 
 // 플랜트
 const PLANT_LABELS = {
-  "1010": "경산",
-  "1021": "경주1",
-  "1022": "경주2",
-  "1023": "경주3",
-  "1024": "경주4",
+  1010: "경산",
+  1021: "경주1",
+  1022: "경주2",
+  1023: "경주3",
+  1024: "경주4",
 };
 
 // Prod.계층구조01-2
 const PROD_HIER_LABELS = {
-  "100001": "BACK",
-  "101001": "C/LAMP",
-  "102001": "COWL",
-  "103001": "CTR FLR",
-  "104001": "DASH",
-  "104002": "DASH&COWL",
-  "104003": "DASH&COWL&FR PLR",
-  "105001": "DASH CROSS MBR",
-  "106001": "F/APRON COMPL",
-  "106002": "F/APRON PNL",
-  "106003": "F/APRON MBR",
-  "107001": "FR PLR",
-  "108001": "P/TRAY",
-  "109001": "QTR INR COMPL",
-  "109002": "QTR LWR",
-  "109003": "QTR UPR",
-  "110001": "SUNROOF",
-  "110002": "PANORAMA SUNROOF",
-  "110003": "VISION ROOF",
-  "111001": "RR EXTN",
-  "112001": "RR FLR COMPL",
-  "112002": "PNL-RR FLR",
-  "112003": "MBR-RR FLR",
-  "113001": "RR STEP",
-  "114001": "REINF SIDE OTR COMPL",
-  "114002": "SIDE INR",
-  "114003": "SIDE OTR",
-  "115001": "SIDE SILL",
-  "116001": "STRC 740",
-  "116002": "STRC 741",
-  "116003": "STRC 747",
-  "116004": "STRC 749",
-  "116005": "STRC 760",
-  "116006": "STRC 764",
-  "116007": "STRC 767",
-  "116008": "STRC 768",
-  "116009": "STRC 780",
-  "116010": "STRC 789",
-  "116011": "STRC 793",
-  "116012": "STRC 798",
-  "116013": "STRC 799",
-  "116014": "STRC 801",
-  "116015": "STRC 805",
-  "116016": "STRC 808",
-  "116017": "STRC 810",
-  "116018": "STRC 813",
-  "116019": "STRC 816",
-  "116020": "STRC 840",
-  "116021": "STRC 845",
-  "116022": "STRC 846",
-  "116023": "STRC 859",
-  "116024": "STRC 863",
-  "116025": "STRC 864",
-  "200001": "FR DR",
-  "200002": "RR DR",
-  "201001": "HOOD",
-  "202001": "T/GATE",
-  "203001": "T/LID",
-  "300001": "RAD SUPT",
-  "800001": "BCA",
-  "800002": "BATTERY",
-  "801001": "H/W",
-  "802001": "PARTITION",
-  "803001": "PAD, SEALER",
-  "804001": "TYPE D",
-  "804002": "TYPE E",
-  "804003": "TYPE F",
-  "804004": "TYPE D-HV",
-  "804005": "TYPE E-HV",
-  "810001": "금형",
-  "810002": "설비",
-  "820001": "I/F",
-  "820002": "C/F",
-  "830001": "COIL",
-  "890001": "ETC",
+  100001: "BACK",
+  101001: "C/LAMP",
+  102001: "COWL",
+  103001: "CTR FLR",
+  104001: "DASH",
+  104002: "DASH&COWL",
+  104003: "DASH&COWL&FR PLR",
+  105001: "DASH CROSS MBR",
+  106001: "F/APRON COMPL",
+  106002: "F/APRON PNL",
+  106003: "F/APRON MBR",
+  107001: "FR PLR",
+  108001: "P/TRAY",
+  109001: "QTR INR COMPL",
+  109002: "QTR LWR",
+  109003: "QTR UPR",
+  110001: "SUNROOF",
+  110002: "PANORAMA SUNROOF",
+  110003: "VISION ROOF",
+  111001: "RR EXTN",
+  112001: "RR FLR COMPL",
+  112002: "PNL-RR FLR",
+  112003: "MBR-RR FLR",
+  113001: "RR STEP",
+  114001: "REINF SIDE OTR COMPL",
+  114002: "SIDE INR",
+  114003: "SIDE OTR",
+  115001: "SIDE SILL",
+  116001: "STRC 740",
+  116002: "STRC 741",
+  116003: "STRC 747",
+  116004: "STRC 749",
+  116005: "STRC 760",
+  116006: "STRC 764",
+  116007: "STRC 767",
+  116008: "STRC 768",
+  116009: "STRC 780",
+  116010: "STRC 789",
+  116011: "STRC 793",
+  116012: "STRC 798",
+  116013: "STRC 799",
+  116014: "STRC 801",
+  116015: "STRC 805",
+  116016: "STRC 808",
+  116017: "STRC 810",
+  116018: "STRC 813",
+  116019: "STRC 816",
+  116020: "STRC 840",
+  116021: "STRC 845",
+  116022: "STRC 846",
+  116023: "STRC 859",
+  116024: "STRC 863",
+  116025: "STRC 864",
+  200001: "FR DR",
+  200002: "RR DR",
+  201001: "HOOD",
+  202001: "T/GATE",
+  203001: "T/LID",
+  300001: "RAD SUPT",
+  800001: "BCA",
+  800002: "BATTERY",
+  801001: "H/W",
+  802001: "PARTITION",
+  803001: "PAD, SEALER",
+  804001: "TYPE D",
+  804002: "TYPE E",
+  804003: "TYPE F",
+  804004: "TYPE D-HV",
+  804005: "TYPE E-HV",
+  810001: "금형",
+  810002: "설비",
+  820001: "I/F",
+  820002: "C/F",
+  830001: "COIL",
+  890001: "ETC",
   "900S11": "공구류",
   "900S12": "벨트류",
   "900S13": "베어링류",
@@ -134,52 +134,52 @@ const PROD_HIER_LABELS = {
 
 // 평가클래스
 const VAL_CLASS_LABELS = {
-  "3000": "원재료",
-  "3010": "부재료-1차사직거래품",
-  "3011": "부재료-2차사반제품",
-  "3012": "부재료-핫스템핑",
-  "3013": "부재료-HMC사급품",
-  "3014": "부재료-H/W",
-  "3015": "부재료-PAD",
-  "3016": "부재료-구조용접착제",
-  "3100": "상품(부품)",
-  "3110": "상품(투자개발)",
-  "7900": "반제품",
-  "7920": "완제품",
+  3000: "원재료",
+  3010: "부재료-1차사직거래품",
+  3011: "부재료-2차사반제품",
+  3012: "부재료-핫스템핑",
+  3013: "부재료-HMC사급품",
+  3014: "부재료-H/W",
+  3015: "부재료-PAD",
+  3016: "부재료-구조용접착제",
+  3100: "상품(부품)",
+  3110: "상품(투자개발)",
+  7900: "반제품",
+  7920: "완제품",
 };
 
 // 손익센터
 const PROFIT_CENTER_LABELS = {
-  "1010": "본사공통",
-  "1011": "본사1",
-  "1012": "본사2",
-  "1020": "경주공통",
-  "1021": "경주1",
-  "1022": "경주2",
-  "1023": "경주3",
-  "1024": "경주4",
+  1010: "본사공통",
+  1011: "본사1",
+  1012: "본사2",
+  1020: "경주공통",
+  1021: "경주1",
+  1022: "경주2",
+  1023: "경주3",
+  1024: "경주4",
 };
 
 // 유통경로
 const CHANNEL_LABELS = {
-  "10": "내수 (10,20)",
-  "20": "로컬",
-  "30": "직수출",
-  "90": "사급 (90,91)",
-  "91": "비사급",
-  "92": "스크랩",
+  10: "내수 (10,20)",
+  20: "로컬",
+  30: "직수출",
+  90: "사급 (90,91)",
+  91: "비사급",
+  92: "스크랩",
 };
 
 // 기타매출 유형
 const OTHER_SALES_TYPE_LABELS = {
-  "1": "OEM",
-  "2": "시작차",
-  "3": "부산물",
-  "4": "수수료",
-  "5": "태양광",
-  "6": "리비안",
-  "7": "NX5",
-  "8": "NX5a",
+  1: "OEM",
+  2: "시작차",
+  3: "부산물",
+  4: "수수료",
+  5: "태양광",
+  6: "리비안",
+  7: "NX5",
+  8: "NX5a",
   A: "폐기(배부)",
   B: "실사조정(배부)",
   C: "유상사급(배부)",
@@ -193,9 +193,9 @@ const OTHER_SALES_TYPE_LABELS = {
 
 // 레코드 유형
 const RECORD_TYPE_LABELS = {
-  "1": "기타매출계획",
-  "2": "수출제비용 계획",
-  "3": "운송비계획",
+  1: "기타매출계획",
+  2: "수출제비용 계획",
+  3: "운송비계획",
   A: "수주",
   B: "FI에서 직접전기",
   C: "오더/프로젝트 정산",
@@ -212,7 +212,7 @@ const RECORD_TYPE_LABELS = {
 
 // 판매문서 유형 (원본 유지)
 const SD_DOC_TYPE_LABELS = {
-  "1": "고객 독립 소요량",
+  1: "고객 독립 소요량",
   AA: "판촉 오더",
   AD1: "A&D 계약",
   AD2: "A&D 차변 메모 요청",
@@ -447,7 +447,16 @@ const getCodeLabel = (cond, code) => {
 };
 
 // 손익 구조에서 보여줄 항목 순서
-const KPI_ORDER = ["매출액", "매출원가계", "매출총이익", "판매비와일반관리비", "영업이익", "영업외수익", "영업외비용", "당기순이익"];
+const KPI_ORDER = [
+  "매출액",
+  "매출원가계",
+  "매출총이익",
+  "판매비와일반관리비",
+  "영업이익",
+  "영업외수익",
+  "영업외비용",
+  "당기순이익",
+];
 
 /* ============================
  * ✅ 조건 화면 전용: "전부 다른 색" 생성기
@@ -483,7 +492,17 @@ const getDivergingColor = (pct) => {
 /* ============================
  * ✅ 상단 헤더용 조건 버튼 목록
  * ============================ */
-const CONDITION_KEYS = ["전체", "플랜트", "대표차종", "유통경로", "판매문서유형", "기타매출유형", "평가클래스", "Prod.계층구조01-2", "손익센터"];
+const CONDITION_KEYS = [
+  "전체",
+  "플랜트",
+  "대표차종",
+  "유통경로",
+  "판매문서유형",
+  "기타매출유형",
+  "평가클래스",
+  "Prod.계층구조01-2",
+  "손익센터",
+];
 
 /* ============================
  * ✅ PDF Export (시각화 영역만)
@@ -528,7 +547,14 @@ async function exportToPDF(targetEl, filename) {
  * ✅ 추가 props
  * - showCondBar: 부모가 조건바를 렌더링하든 말든, "그래프 탭 내부"에서 조건바를 보여줄지
  */
-function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, setSelectedCond, showCondBar = true }) {
+function PlReportGraphTab({
+  rows,
+  selectedCond,
+  selectedYear,
+  selectedMonth,
+  setSelectedCond,
+  showCondBar = true,
+}) {
   const hasData = rows && rows.length > 0;
   const exportRef = useRef(null);
 
@@ -546,7 +572,8 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     else setLocalCond(c);
   };
 
-  const summaryColName = effectiveCond === "전체" ? "전체" : `${effectiveCond}_전체`;
+  const summaryColName =
+    effectiveCond === "전체" ? "전체" : `${effectiveCond}_전체`;
 
   const getValue = (itemName, colOverride = null) => {
     if (!hasData) return 0;
@@ -560,7 +587,8 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   };
 
   const formatNumber = (v) => {
-    if (v === null || v === undefined || v === "" || Number.isNaN(v)) return "-";
+    if (v === null || v === undefined || v === "" || Number.isNaN(v))
+      return "-";
     return Number(v).toLocaleString("ko-KR");
   };
 
@@ -584,12 +612,19 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     return match ? match[1].length : 0;
   };
 
-  const getDetailGroup = (parentTitle, topN = 10, colNameOverride = null, alwaysIncludeNames = []) => {
+  const getDetailGroup = (
+    parentTitle,
+    topN = 10,
+    colNameOverride = null,
+    alwaysIncludeNames = []
+  ) => {
     if (!hasData) return { total: 0, items: [] };
 
     const colName = colNameOverride || summaryColName;
 
-    const parentIndex = rows.findIndex((r) => (r["항목"] || "").trim() === parentTitle);
+    const parentIndex = rows.findIndex(
+      (r) => (r["항목"] || "").trim() === parentTitle
+    );
     if (parentIndex === -1) return { total: 0, items: [] };
 
     const parentRaw = rows[parentIndex]["항목"] || "";
@@ -607,7 +642,11 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
       const label = rawName.trim();
       if (!label) continue;
 
-      if ((parentTitle === "매출원가계" && label === "매출원가") || (parentTitle === "판매비와일반관리비" && label === "판관비")) continue;
+      if (
+        (parentTitle === "매출원가계" && label === "매출원가") ||
+        (parentTitle === "판매비와일반관리비" && label === "판관비")
+      )
+        continue;
 
       const value = Number(rows[i][colName]) || 0;
       if (!value) continue;
@@ -619,7 +658,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const labels = Object.keys(agg);
     if (labels.length === 0) return { total: parentValue, items: [] };
 
-    let items = labels.map((name) => ({ name, value: agg[name] })).filter((d) => d.value !== 0);
+    let items = labels
+      .map((name) => ({ name, value: agg[name] }))
+      .filter((d) => d.value !== 0);
     if (items.length === 0) return { total: parentValue, items: [] };
 
     items.sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
@@ -651,7 +692,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const prefix = `${effectiveCond}_`;
     const totalCol = `${effectiveCond}_전체`;
 
-    const cols = Object.keys(rows[0] || {}).filter((c) => c.startsWith(prefix) && c !== totalCol);
+    const cols = Object.keys(rows[0] || {}).filter(
+      (c) => c.startsWith(prefix) && c !== totalCol
+    );
     const total = Number(row[totalCol]) || 0;
 
     const items = cols
@@ -688,7 +731,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   const domesticPct = totalSalesAll ? (domesticSales / salesSafe) * 100 : 0;
   const exportPct = totalSalesAll ? (exportSales / salesSafe) * 100 : 0;
 
-  const operatingMargin = totalSalesAll ? (operatingIncome / totalSalesAll) * 100 : 0;
+  const operatingMargin = totalSalesAll
+    ? (operatingIncome / totalSalesAll) * 100
+    : 0;
   const netMargin = totalSalesAll ? (netIncome / totalSalesAll) * 100 : 0;
 
   const cogs = getValue("매출원가계");
@@ -697,7 +742,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
   // ✅ 영업비용 = 매출원가계 + 판관비, 영업비용률 = (원가+판관비)/매출
   const operatingCost = (Number(cogs) || 0) + (Number(sga) || 0);
-  const operatingCostRatio = totalSalesAll ? (operatingCost / totalSalesAll) * 100 : 0;
+  const operatingCostRatio = totalSalesAll
+    ? (operatingCost / totalSalesAll) * 100
+    : 0;
 
   // -----------------------------
   // 1) 손익 구조 시리즈(유지)
@@ -715,11 +762,46 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   // -----------------------------
   const ratioItems = useMemo(() => {
     const meta = [
-      { key: "매출원가계", label: "매출원가율", sub: "COGS / Sales", formula: "매출원가계 ÷ 매출액", value: getValue("매출원가계"), tone: "blue" },
-      { key: "매출총이익", label: "매출총이익률", sub: "Gross Margin", formula: "매출총이익 ÷ 매출액", value: getValue("매출총이익"), tone: "green" },
-      { key: "판매비와일반관리비", label: "판관비율", sub: "SG&A / Sales", formula: "판관비 ÷ 매출액", value: getValue("판매비와일반관리비"), tone: "indigo" },
-      { key: "영업이익", label: "영업이익률", sub: "Operating", formula: "영업이익 ÷ 매출액", value: getValue("영업이익"), tone: "teal" },
-      { key: "당기순이익", label: "순이익률", sub: "Net Profit / Sales", formula: "당기순이익 ÷ 매출액", value: getValue("당기순이익"), tone: "slate" },
+      {
+        key: "매출원가계",
+        label: "매출원가율",
+        sub: "COGS / Sales",
+        formula: "매출원가계 ÷ 매출액",
+        value: getValue("매출원가계"),
+        tone: "blue",
+      },
+      {
+        key: "매출총이익",
+        label: "매출총이익률",
+        sub: "Gross Margin",
+        formula: "매출총이익 ÷ 매출액",
+        value: getValue("매출총이익"),
+        tone: "green",
+      },
+      {
+        key: "판매비와일반관리비",
+        label: "판관비율",
+        sub: "SG&A / Sales",
+        formula: "판관비 ÷ 매출액",
+        value: getValue("판매비와일반관리비"),
+        tone: "indigo",
+      },
+      {
+        key: "영업이익",
+        label: "영업이익률",
+        sub: "Operating",
+        formula: "영업이익 ÷ 매출액",
+        value: getValue("영업이익"),
+        tone: "teal",
+      },
+      {
+        key: "당기순이익",
+        label: "순이익률",
+        sub: "Net Profit / Sales",
+        formula: "당기순이익 ÷ 매출액",
+        value: getValue("당기순이익"),
+        tone: "slate",
+      },
     ];
 
     const toneColor = (tone) => {
@@ -791,7 +873,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     };
 
     pushCodes(conditionKpiTop10?.["매출액"]?.items || []);
-    KPI_ORDER.forEach((kpi) => pushCodes(conditionKpiTop10?.[kpi]?.items || []));
+    KPI_ORDER.forEach((kpi) =>
+      pushCodes(conditionKpiTop10?.[kpi]?.items || [])
+    );
     pushCodes(conditionDomesticTop10?.items || []);
     pushCodes(conditionExportTop10?.items || []);
 
@@ -801,7 +885,12 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     });
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveCond, conditionKpiTop10, conditionDomesticTop10, conditionExportTop10]);
+  }, [
+    effectiveCond,
+    conditionKpiTop10,
+    conditionDomesticTop10,
+    conditionExportTop10,
+  ]);
 
   const getCodeColor = (code) => conditionColorMap?.[code] || "#64748b";
 
@@ -813,7 +902,9 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
     const prefix = `${effectiveCond}_`;
     const totalCol = `${effectiveCond}_전체`;
-    const cols = Object.keys(rows[0] || {}).filter((c) => c.startsWith(prefix) && c !== totalCol);
+    const cols = Object.keys(rows[0] || {}).filter(
+      (c) => c.startsWith(prefix) && c !== totalCol
+    );
     const codes = cols.map((c) => c.replace(prefix, ""));
 
     return codes
@@ -843,16 +934,38 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   const detailCol43 = getDetailCol(detailPickAll);
   const detailCol44 = getDetailCol(detailPickAll);
 
-  const cogsDetailTop10 = useMemo(() => getDetailGroup("매출원가계", 12, detailCol41, ["매출원가 기타"]), [rows, hasData, detailCol41]); // eslint-disable-line
-  const sgaDetailTop10 = useMemo(() => getDetailGroup("판매비와일반관리비", 10, detailCol42), [rows, hasData, detailCol42]); // eslint-disable-line
-  const nonOpIncomeDetailTop10 = useMemo(() => getDetailGroup("영업외수익", 10, detailCol43), [rows, hasData, detailCol43]); // eslint-disable-line
-  const nonOpExpenseDetailTop10 = useMemo(() => getDetailGroup("영업외비용", 10, detailCol44), [rows, hasData, detailCol44]); // eslint-disable-line
+  const cogsDetailTop10 = useMemo(
+    () => getDetailGroup("매출원가계", 12, detailCol41, ["매출원가 기타"]),
+    [rows, hasData, detailCol41]
+  ); // eslint-disable-line
+  const sgaDetailTop10 = useMemo(
+    () => getDetailGroup("판매비와일반관리비", 10, detailCol42),
+    [rows, hasData, detailCol42]
+  ); // eslint-disable-line
+  const nonOpIncomeDetailTop10 = useMemo(
+    () => getDetailGroup("영업외수익", 10, detailCol43),
+    [rows, hasData, detailCol43]
+  ); // eslint-disable-line
+  const nonOpExpenseDetailTop10 = useMemo(
+    () => getDetailGroup("영업외비용", 10, detailCol44),
+    [rows, hasData, detailCol44]
+  ); // eslint-disable-line
 
-  const domesticDetail = useMemo(() => getDetailGroup("국내매출액", 10, summaryColName), [rows, summaryColName, hasData]); // eslint-disable-line
-  const exportDetail = useMemo(() => getDetailGroup("수출매출액", 10, summaryColName), [rows, summaryColName, hasData]); // eslint-disable-line
+  const domesticDetail = useMemo(
+    () => getDetailGroup("국내매출액", 10, summaryColName),
+    [rows, summaryColName, hasData]
+  ); // eslint-disable-line
+  const exportDetail = useMemo(
+    () => getDetailGroup("수출매출액", 10, summaryColName),
+    [rows, summaryColName, hasData]
+  ); // eslint-disable-line
 
-  const domesticItemsFiltered = domesticDetail.items.filter((it) => !it.name.includes("판매수량"));
-  const exportItemsFiltered = exportDetail.items.filter((it) => !it.name.includes("판매수량"));
+  const domesticItemsFiltered = domesticDetail.items.filter(
+    (it) => !it.name.includes("판매수량")
+  );
+  const exportItemsFiltered = exportDetail.items.filter(
+    (it) => !it.name.includes("판매수량")
+  );
 
   /* ============================
    * ✅ Angular(각진) UI Tokens
@@ -971,11 +1084,31 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
         >
           <div style={{ minWidth: 0 }}>
             {kicker && (
-              <div style={{ fontSize: 11, color: UI.mute, fontWeight: 900, letterSpacing: 0.2, textTransform: "uppercase" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: UI.mute,
+                  fontWeight: 900,
+                  letterSpacing: 0.2,
+                  textTransform: "uppercase",
+                }}
+              >
                 {kicker}
               </div>
             )}
-            {title && <div style={{ fontSize: 13, fontWeight: 950, color: UI.text, marginTop: 2, lineHeight: 1.25 }}>{title}</div>}
+            {title && (
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 950,
+                  color: UI.text,
+                  marginTop: 2,
+                  lineHeight: 1.25,
+                }}
+              >
+                {title}
+              </div>
+            )}
           </div>
           {right && <div style={{ flex: "0 0 auto" }}>{right}</div>}
         </div>
@@ -1006,11 +1139,37 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   };
 
   const LabelRow = ({ left, right }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-      <div style={{ fontSize: 12, color: UI.sub, fontWeight: 900, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "baseline",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          color: UI.sub,
+          fontWeight: 900,
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
         {left}
       </div>
-      <div style={{ fontSize: 12, color: UI.text, fontWeight: 950, whiteSpace: "nowrap" }}>{right}</div>
+      <div
+        style={{
+          fontSize: 12,
+          color: UI.text,
+          fontWeight: 950,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {right}
+      </div>
     </div>
   );
 
@@ -1019,8 +1178,27 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const bg = `conic-gradient(${color} ${clamped}%, #e2e8f0 0)`;
 
     return (
-      <div style={{ width: "100%", minWidth: 0, display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-        <div style={{ width: 140, height: 140, borderRadius: "50%", background: bg, border: UI.border, display: "grid", placeItems: "center" }}>
+      <div
+        style={{
+          width: "100%",
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 10,
+        }}
+      >
+        <div
+          style={{
+            width: 140,
+            height: 140,
+            borderRadius: "50%",
+            background: bg,
+            border: UI.border,
+            display: "grid",
+            placeItems: "center",
+          }}
+        >
           <div
             style={{
               width: 104,
@@ -1034,12 +1212,43 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
               justifyContent: "center",
             }}
           >
-            <div style={{ fontSize: 20, fontWeight: 950, color: UI.text, lineHeight: 1 }}>{ratioText}</div>
-            <div style={{ fontSize: 11, fontWeight: 900, color: UI.mute, marginTop: 4 }}>{sub}</div>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 950,
+                color: UI.text,
+                lineHeight: 1,
+              }}
+            >
+              {ratioText}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 900,
+                color: UI.mute,
+                marginTop: 4,
+              }}
+            >
+              {sub}
+            </div>
           </div>
         </div>
-        <div style={{ fontSize: 13, fontWeight: 950, color: UI.text, textAlign: "center" }}>{label}</div>
-        {formula && <div style={{ fontSize: 11, color: UI.mute, textAlign: "center" }}>{formula}</div>}
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 950,
+            color: UI.text,
+            textAlign: "center",
+          }}
+        >
+          {label}
+        </div>
+        {formula && (
+          <div style={{ fontSize: 11, color: UI.mute, textAlign: "center" }}>
+            {formula}
+          </div>
+        )}
       </div>
     );
   };
@@ -1061,12 +1270,32 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
     const steps = [
       { key: "매출액", label: "매출", value: vSales, kind: "base" },
-      { key: "매출원가계", label: "원가", value: -Math.abs(vCogs), kind: "delta" },
+      {
+        key: "매출원가계",
+        label: "원가",
+        value: -Math.abs(vCogs),
+        kind: "delta",
+      },
       { key: "매출총이익", label: "매출총이익", value: vGross, kind: "total" },
-      { key: "판매비와일반관리비", label: "판관비", value: -Math.abs(vSga), kind: "delta" },
+      {
+        key: "판매비와일반관리비",
+        label: "판관비",
+        value: -Math.abs(vSga),
+        kind: "delta",
+      },
       { key: "영업이익", label: "영업이익", value: vOp, kind: "total" },
-      { key: "영업외수익", label: "영업외수익", value: Math.abs(vNonOpInc), kind: "delta" },
-      { key: "영업외비용", label: "영업외비용", value: -Math.abs(vNonOpExp), kind: "delta" },
+      {
+        key: "영업외수익",
+        label: "영업외수익",
+        value: Math.abs(vNonOpInc),
+        kind: "delta",
+      },
+      {
+        key: "영업외비용",
+        label: "영업외비용",
+        value: -Math.abs(vNonOpExp),
+        kind: "delta",
+      },
       { key: "당기순이익", label: "순이익", value: vNet, kind: "total" },
     ];
 
@@ -1086,7 +1315,10 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
       return { ...s, from, to: cum };
     });
 
-    const maxAbs = Math.max(...points.map((p) => Math.max(Math.abs(p.from), Math.abs(p.to))), 1);
+    const maxAbs = Math.max(
+      ...points.map((p) => Math.max(Math.abs(p.from), Math.abs(p.to))),
+      1
+    );
 
     const pad = 18;
     const per = 140;
@@ -1118,13 +1350,38 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     return (
       <div style={{ width: "100%", overflowX: "auto", paddingBottom: 2 }}>
         <svg width={w} height={h} style={{ display: "block" }}>
-          <rect x="0" y="0" width={w} height={h} rx={UI.radius2} fill="#fff" stroke="#e2e8f0" />
+          <rect
+            x="0"
+            y="0"
+            width={w}
+            height={h}
+            rx={UI.radius2}
+            fill="#fff"
+            stroke="#e2e8f0"
+          />
 
           {[0, 0.25, 0.5, 0.75, 1].map((k) => {
             const yy = topY + k * chartH;
-            return <line key={k} x1={pad} y1={yy} x2={w - pad} y2={yy} stroke="#e2e8f0" strokeWidth="1" />;
+            return (
+              <line
+                key={k}
+                x1={pad}
+                y1={yy}
+                x2={w - pad}
+                y2={yy}
+                stroke="#e2e8f0"
+                strokeWidth="1"
+              />
+            );
           })}
-          <line x1={pad} y1={zeroY} x2={w - pad} y2={zeroY} stroke="#94a3b8" strokeWidth="1" />
+          <line
+            x1={pad}
+            y1={zeroY}
+            x2={w - pad}
+            y2={zeroY}
+            stroke="#94a3b8"
+            strokeWidth="1"
+          />
 
           {points.map((p, i) => {
             const slotX = pad + i * per;
@@ -1142,12 +1399,44 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
             return (
               <g key={p.key}>
-                {i > 0 && <line x1={prevX} y1={prevY} x2={x} y2={y1} stroke="#cbd5e1" strokeWidth="2" strokeDasharray={p.kind === "total" ? "4 4" : "0"} />}
-                <rect x={x} y={top} width={barW} height={barH} rx={UI.radius2} fill={color} opacity="0.92" />
-                <text x={x + barW / 2} y={top - 12} textAnchor="middle" fontSize="13" fontWeight="900" fill="#0f172a">
+                {i > 0 && (
+                  <line
+                    x1={prevX}
+                    y1={prevY}
+                    x2={x}
+                    y2={y1}
+                    stroke="#cbd5e1"
+                    strokeWidth="2"
+                    strokeDasharray={p.kind === "total" ? "4 4" : "0"}
+                  />
+                )}
+                <rect
+                  x={x}
+                  y={top}
+                  width={barW}
+                  height={barH}
+                  rx={UI.radius2}
+                  fill={color}
+                  opacity="0.92"
+                />
+                <text
+                  x={x + barW / 2}
+                  y={top - 12}
+                  textAnchor="middle"
+                  fontSize="13"
+                  fontWeight="900"
+                  fill="#0f172a"
+                >
                   {formatSigned(p.kind === "delta" ? p.value : p.to)}
                 </text>
-                <text x={x + barW / 2} y={h - 14} textAnchor="middle" fontSize="13" fontWeight="900" fill="#475569">
+                <text
+                  x={x + barW / 2}
+                  y={h - 14}
+                  textAnchor="middle"
+                  fontSize="13"
+                  fontWeight="900"
+                  fill="#475569"
+                >
                   {p.label}
                 </text>
               </g>
@@ -1160,20 +1449,33 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
 
   const SegmentedBar = ({ items, getColor, height = 14 }) => {
     const safeItems = (items || []).filter((it) => (Number(it.share) || 0) > 0);
-    if (safeItems.length === 0) return <div style={{ height, border: UI.border, background: "#f1f5f9" }} />;
+    if (safeItems.length === 0)
+      return (
+        <div style={{ height, border: UI.border, background: "#f1f5f9" }} />
+      );
 
     let sum = safeItems.reduce((s, it) => s + (Number(it.share) || 0), 0);
     if (!sum) sum = 1;
 
     return (
-      <div style={{ height, background: "#f1f5f9", overflow: "hidden", display: "flex", border: UI.border }}>
+      <div
+        style={{
+          height,
+          background: "#f1f5f9",
+          overflow: "hidden",
+          display: "flex",
+          border: UI.border,
+        }}
+      >
         {safeItems.map((it) => {
           const pct = (Number(it.share) || 0) / sum;
           const widthPct = Math.max(pct * 100, 0);
           return (
             <div
               key={it.col || it.code || it.name}
-              title={`${it.label || it.name} (${(Number(it.share) || 0).toFixed(1)}%)`}
+              title={`${it.label || it.name} (${(Number(it.share) || 0).toFixed(
+                1
+              )}%)`}
               style={{
                 width: `${widthPct}%`,
                 minWidth: 2,
@@ -1207,8 +1509,21 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   );
 
   const Bar = ({ pct, color }) => (
-    <div style={{ border: UI.border, background: "#f1f5f9", height: 10, overflow: "hidden" }}>
-      <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: "100%", background: color }} />
+    <div
+      style={{
+        border: UI.border,
+        background: "#f1f5f9",
+        height: 10,
+        overflow: "hidden",
+      }}
+    >
+      <div
+        style={{
+          width: `${Math.max(0, Math.min(100, pct))}%`,
+          height: "100%",
+          background: color,
+        }}
+      />
     </div>
   );
 
@@ -1219,8 +1534,26 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const isNeg = p < 0;
 
     return (
-      <div style={{ position: "relative", border: UI.border, background: "#f1f5f9", height, overflow: "hidden" }}>
-        <div style={{ position: "absolute", left: "50%", top: 0, bottom: 0, width: 1, background: "#94a3b8", opacity: 0.8 }} />
+      <div
+        style={{
+          position: "relative",
+          border: UI.border,
+          background: "#f1f5f9",
+          height,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 0,
+            bottom: 0,
+            width: 1,
+            background: "#94a3b8",
+            opacity: 0.8,
+          }}
+        />
         <div
           style={{
             position: "absolute",
@@ -1240,33 +1573,125 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const total = data?.total || 0;
 
     return (
-      <div style={{ width: "100%", minWidth: 0, border: UI.border, background: "#fff", padding: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "baseline" }}>
-          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>{title} Top 10</div>
-          <div style={{ fontSize: 12, color: UI.mute, whiteSpace: "nowrap", fontWeight: 900 }}>합계 {formatNumber(total)}</div>
+      <div
+        style={{
+          width: "100%",
+          minWidth: 0,
+          border: UI.border,
+          background: "#fff",
+          padding: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "baseline",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>
+            {title} Top 10
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: UI.mute,
+              whiteSpace: "nowrap",
+              fontWeight: 900,
+            }}
+          >
+            합계 {formatNumber(total)}
+          </div>
         </div>
 
         {items.length === 0 ? (
-          <div style={{ fontSize: 12, color: UI.mute, marginTop: 10 }}>데이터가 없습니다.</div>
+          <div style={{ fontSize: 12, color: UI.mute, marginTop: 10 }}>
+            데이터가 없습니다.
+          </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 12 }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              marginTop: 12,
+            }}
+          >
             {items.map((it, idx) => {
               const color = getCodeColor(it.code);
               const widthPct = Math.min(Math.abs(it.share), 100);
               return (
-                <div key={it.col} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12, color: UI.sub }}>
-                    <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      <span style={{ fontWeight: 950, color: UI.text, marginRight: 6 }}>{idx + 1}.</span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                        <span style={{ width: 10, height: 10, background: color, display: "inline-block" }} />
-                        <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {it.label} <span style={{ color: UI.mute }}>({it.code})</span>
+                <div
+                  key={it.col}
+                  style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 12,
+                      fontSize: 12,
+                      color: UI.sub,
+                    }}
+                  >
+                    <span
+                      style={{
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontWeight: 950,
+                          color: UI.text,
+                          marginRight: 6,
+                        }}
+                      >
+                        {idx + 1}.
+                      </span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 8,
+                          minWidth: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            background: color,
+                            display: "inline-block",
+                          }}
+                        />
+                        <span
+                          style={{
+                            minWidth: 0,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {it.label}{" "}
+                          <span style={{ color: UI.mute }}>({it.code})</span>
                         </span>
                       </span>
                     </span>
-                    <span style={{ whiteSpace: "nowrap", fontWeight: 950, color: UI.text }}>
-                      {formatNumber(it.value)} <span style={{ color: UI.mute, fontWeight: 900 }}>({it.share.toFixed(1)}%)</span>
+                    <span
+                      style={{
+                        whiteSpace: "nowrap",
+                        fontWeight: 950,
+                        color: UI.text,
+                      }}
+                    >
+                      {formatNumber(it.value)}{" "}
+                      <span style={{ color: UI.mute, fontWeight: 900 }}>
+                        ({it.share.toFixed(1)}%)
+                      </span>
                     </span>
                   </div>
 
@@ -1285,10 +1710,39 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const total = data?.total || 0;
 
     return (
-      <div style={{ width: "100%", minWidth: 0, border: UI.border, background: "#fff", padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>{title} Top 10</div>
-          <div style={{ fontSize: 12, color: UI.mute, whiteSpace: "nowrap", fontWeight: 900 }}>합계 {formatNumber(total)}</div>
+      <div
+        style={{
+          width: "100%",
+          minWidth: 0,
+          border: UI.border,
+          background: "#fff",
+          padding: 12,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 10,
+            alignItems: "baseline",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>
+            {title} Top 10
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: UI.mute,
+              whiteSpace: "nowrap",
+              fontWeight: 900,
+            }}
+          >
+            합계 {formatNumber(total)}
+          </div>
         </div>
 
         {items.length === 0 ? (
@@ -1296,30 +1750,66 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
         ) : (
           <>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900 }}>Top10 구성 비중(누적)</div>
-              <SegmentedBar items={items} getColor={(it) => getCodeColor(it.code)} height={14} />
+              <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900 }}>
+                Top10 구성 비중(누적)
+              </div>
+              <SegmentedBar
+                items={items}
+                getColor={(it) => getCodeColor(it.code)}
+                height={14}
+              />
             </div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900 }}>Top 10 상세</div>
+              <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900 }}>
+                Top 10 상세
+              </div>
               {items.map((it) => {
                 const color = getCodeColor(it.code);
                 const widthPct = Math.min(Math.abs(it.share), 100);
 
                 return (
-                  <div key={it.col} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div
+                    key={it.col}
+                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                  >
                     <LabelRow
                       left={
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                          <span style={{ width: 10, height: 10, background: color, display: "inline-block" }} />
-                          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                            {it.label} <span style={{ color: UI.mute }}>({it.code})</span>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 8,
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              background: color,
+                              display: "inline-block",
+                            }}
+                          />
+                          <span
+                            style={{
+                              minWidth: 0,
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {it.label}{" "}
+                            <span style={{ color: UI.mute }}>({it.code})</span>
                           </span>
                         </span>
                       }
                       right={
                         <>
-                          {formatNumber(it.value)} <span style={{ color: UI.mute, fontWeight: 900 }}>({it.share.toFixed(1)}%)</span>
+                          {formatNumber(it.value)}{" "}
+                          <span style={{ color: UI.mute, fontWeight: 900 }}>
+                            ({it.share.toFixed(1)}%)
+                          </span>
                         </>
                       }
                     />
@@ -1350,22 +1840,59 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   };
 
   // ✅ 요청: 국내/수출 세부 항목 상단 “회색 전체 바” 제거 → showSegment 옵션
-  const TotalSalesDetailSegment = ({ title, totalValue, items, showSegment = false }) => {
+  const TotalSalesDetailSegment = ({
+    title,
+    totalValue,
+    items,
+    showSegment = false,
+  }) => {
     const safeItems = items || [];
     return (
-      <div style={{ width: "100%", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>{title}</div>
-          <div style={{ fontSize: 12, color: UI.mute, whiteSpace: "nowrap", fontWeight: 900 }}>세부합계 {formatNumber(totalValue)}</div>
+      <div
+        style={{
+          width: "100%",
+          minWidth: 0,
+          display: "flex",
+          flexDirection: "column",
+          gap: 12,
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>
+            {title}
+          </div>
+          <div
+            style={{
+              fontSize: 12,
+              color: UI.mute,
+              whiteSpace: "nowrap",
+              fontWeight: 900,
+            }}
+          >
+            세부합계 {formatNumber(totalValue)}
+          </div>
         </div>
 
         {safeItems.length === 0 ? (
-          <div style={{ fontSize: 12, color: UI.mute }}>{title} 세부 항목 데이터가 없습니다.</div>
+          <div style={{ fontSize: 12, color: UI.mute }}>
+            {title} 세부 항목 데이터가 없습니다.
+          </div>
         ) : (
           <>
             {showSegment && (
               <SegmentedBar
-                items={safeItems.map((it) => ({ ...it, col: it.name, share: Number(it.shareSales ?? it.share) || 0 }))}
+                items={safeItems.map((it) => ({
+                  ...it,
+                  col: it.name,
+                  share: Number(it.shareSales ?? it.share) || 0,
+                }))}
                 getColor={() => "#94a3b8"}
                 height={14}
               />
@@ -1376,12 +1903,18 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
                 const pct = Number(it.shareSales ?? it.share) || 0;
                 const pctAbs = Math.max(0, Math.min(Math.abs(pct), 100));
                 return (
-                  <div key={it.name} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div
+                    key={it.name}
+                    style={{ display: "flex", flexDirection: "column", gap: 6 }}
+                  >
                     <LabelRow
                       left={it.name}
                       right={
                         <>
-                          {formatNumber(it.value)} <span style={{ color: UI.mute, fontWeight: 900 }}>({pct.toFixed(1)}%)</span>
+                          {formatNumber(it.value)}{" "}
+                          <span style={{ color: UI.mute, fontWeight: 900 }}>
+                            ({pct.toFixed(1)}%)
+                          </span>
                         </>
                       }
                     />
@@ -1434,40 +1967,128 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
     const centerFont = len >= 12 ? 12 : len >= 10 ? 13 : 14;
 
     return (
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 10,
+          alignItems: "center",
+        }}
+      >
         <svg width={size} height={size} style={{ display: "block" }}>
           <circle cx={cx} cy={cy} r={r} fill="#f1f5f9" stroke="#e2e8f0" />
-          {domPct2 > 0 && <path d={arcPath(start, domEnd)} fill="#3b82f6" opacity="0.95" />}
-          {expPct2 > 0 && <path d={arcPath(domEnd, expEnd)} fill="#10b981" opacity="0.95" />}
-          {etcPct2 > 0 && <path d={arcPath(expEnd, etcEnd)} fill="#94a3b8" opacity="0.9" />}
+          {domPct2 > 0 && (
+            <path d={arcPath(start, domEnd)} fill="#3b82f6" opacity="0.95" />
+          )}
+          {expPct2 > 0 && (
+            <path d={arcPath(domEnd, expEnd)} fill="#10b981" opacity="0.95" />
+          )}
+          {etcPct2 > 0 && (
+            <path d={arcPath(expEnd, etcEnd)} fill="#94a3b8" opacity="0.9" />
+          )}
 
-          <circle cx={cx} cy={cy} r={r * 0.58} fill="#ffffff" stroke="#e2e8f0" />
-          <text x={cx} y={cy - 4} textAnchor="middle" fontSize={centerFont} fontWeight="950" fill="#0f172a">
+          <circle
+            cx={cx}
+            cy={cy}
+            r={r * 0.58}
+            fill="#ffffff"
+            stroke="#e2e8f0"
+          />
+          <text
+            x={cx}
+            y={cy - 4}
+            textAnchor="middle"
+            fontSize={centerFont}
+            fontWeight="950"
+            fill="#0f172a"
+          >
             {centerText}
           </text>
-          <text x={cx} y={cy + 14} textAnchor="middle" fontSize="11" fontWeight="900" fill="#64748b">
+          <text
+            x={cx}
+            y={cy + 14}
+            textAnchor="middle"
+            fontSize="11"
+            fontWeight="900"
+            fill="#64748b"
+          >
             전체 매출액
           </text>
         </svg>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            justifyContent: "center",
+          }}
+        >
           <Pill text={`국내 ${domPct2.toFixed(1)}%`} tone="blue" />
           <Pill text={`수출 ${expPct2.toFixed(1)}%`} tone="green" />
           <Pill text={`기타 ${etcPct2.toFixed(1)}%`} tone="slate" />
         </div>
 
-        <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 6 }}>
+        <div
+          style={{
+            width: "100%",
+            display: "flex",
+            flexDirection: "column",
+            gap: 6,
+          }}
+        >
           {[
-            { k: "dom", label: "국내매출", color: "#3b82f6", v: dom, p: domPct2 },
-            { k: "exp", label: "수출매출", color: "#10b981", v: exp, p: expPct2 },
+            {
+              k: "dom",
+              label: "국내매출",
+              color: "#3b82f6",
+              v: dom,
+              p: domPct2,
+            },
+            {
+              k: "exp",
+              label: "수출매출",
+              color: "#10b981",
+              v: exp,
+              p: expPct2,
+            },
             { k: "etc", label: "기타", color: "#94a3b8", v: etc, p: etcPct2 },
           ].map((it) => (
-            <div key={it.k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12, width: "100%" }}>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 8, color: UI.sub, fontWeight: 900 }}>
-                <span style={{ width: 10, height: 10, background: it.color, display: "inline-block" }} />
-                {it.label} <span style={{ color: UI.mute, fontWeight: 900 }}>{it.p.toFixed(1)}%</span>
+            <div
+              key={it.k}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 10,
+                fontSize: 12,
+                width: "100%",
+              }}
+            >
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  color: UI.sub,
+                  fontWeight: 900,
+                }}
+              >
+                <span
+                  style={{
+                    width: 10,
+                    height: 10,
+                    background: it.color,
+                    display: "inline-block",
+                  }}
+                />
+                {it.label}{" "}
+                <span style={{ color: UI.mute, fontWeight: 900 }}>
+                  {it.p.toFixed(1)}%
+                </span>
               </span>
-              <span style={{ color: UI.text, fontWeight: 950 }}>{formatNumber(it.v)}</span>
+              <span style={{ color: UI.text, fontWeight: 950 }}>
+                {formatNumber(it.v)}
+              </span>
             </div>
           ))}
         </div>
@@ -1476,21 +2097,53 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   };
 
   const exportFilename = useMemo(() => {
-    const ym = selectedYear && selectedMonth ? `${selectedYear}-${String(selectedMonth).padStart(2, "0")}` : "NA";
+    const ym =
+      selectedYear && selectedMonth
+        ? `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`
+        : "NA";
     const cond = effectiveCond === "전체" ? "전체" : `${effectiveCond}`;
     return `PL_Graph_Report_${ym}_${cond}.pdf`;
   }, [selectedYear, selectedMonth, effectiveCond]);
 
-  const cogsDetailTop10_salesShare = useMemo(() => withSalesShare(cogsDetailTop10, detailCol41), [cogsDetailTop10, detailCol41]); // eslint-disable-line
-  const sgaDetailTop10_salesShare = useMemo(() => withSalesShare(sgaDetailTop10, detailCol42), [sgaDetailTop10, detailCol42]); // eslint-disable-line
-  const nonOpIncomeDetailTop10_salesShare = useMemo(() => withSalesShare(nonOpIncomeDetailTop10, detailCol43), [nonOpIncomeDetailTop10, detailCol43]); // eslint-disable-line
-  const nonOpExpenseDetailTop10_salesShare = useMemo(() => withSalesShare(nonOpExpenseDetailTop10, detailCol44), [nonOpExpenseDetailTop10, detailCol44]); // eslint-disable-line
+  const cogsDetailTop10_salesShare = useMemo(
+    () => withSalesShare(cogsDetailTop10, detailCol41),
+    [cogsDetailTop10, detailCol41]
+  ); // eslint-disable-line
+  const sgaDetailTop10_salesShare = useMemo(
+    () => withSalesShare(sgaDetailTop10, detailCol42),
+    [sgaDetailTop10, detailCol42]
+  ); // eslint-disable-line
+  const nonOpIncomeDetailTop10_salesShare = useMemo(
+    () => withSalesShare(nonOpIncomeDetailTop10, detailCol43),
+    [nonOpIncomeDetailTop10, detailCol43]
+  ); // eslint-disable-line
+  const nonOpExpenseDetailTop10_salesShare = useMemo(
+    () => withSalesShare(nonOpExpenseDetailTop10, detailCol44),
+    [nonOpExpenseDetailTop10, detailCol44]
+  ); // eslint-disable-line
 
-  const domesticDetail_salesShare = useMemo(() => withSalesShare({ ...domesticDetail, items: domesticItemsFiltered }, summaryColName), [domesticDetail, summaryColName]); // eslint-disable-line
-  const exportDetail_salesShare = useMemo(() => withSalesShare({ ...exportDetail, items: exportItemsFiltered }, summaryColName), [exportDetail, summaryColName]); // eslint-disable-line
+  const domesticDetail_salesShare = useMemo(
+    () =>
+      withSalesShare(
+        { ...domesticDetail, items: domesticItemsFiltered },
+        summaryColName
+      ),
+    [domesticDetail, summaryColName]
+  ); // eslint-disable-line
+  const exportDetail_salesShare = useMemo(
+    () =>
+      withSalesShare(
+        { ...exportDetail, items: exportItemsFiltered },
+        summaryColName
+      ),
+    [exportDetail, summaryColName]
+  ); // eslint-disable-line
 
   // ✅ 조건 화면 워터폴에 적용할 컬럼 (상단 detailPickAll과 동기화)
-  const condWaterfallCol = useMemo(() => getDetailCol(detailPickAll), [effectiveCond, detailPickAll]); // eslint-disable-line
+  const condWaterfallCol = useMemo(
+    () => getDetailCol(detailPickAll),
+    [effectiveCond, detailPickAll]
+  ); // eslint-disable-line
 
   // ✅ (복구) 세부조건 컨트롤 UI를 “항상” 렌더링하기 위한 플래그/컴포넌트
   const shouldShowDetailPicker = effectiveCond !== "전체";
@@ -1513,7 +2166,14 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           borderRadius: compact ? UI.radius2 : 0,
         }}
       >
-        <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900, whiteSpace: "nowrap" }}>
+        <div
+          style={{
+            fontSize: 12,
+            color: UI.mute,
+            fontWeight: 900,
+            whiteSpace: "nowrap",
+          }}
+        >
           세부조건 선택 → 워터폴 + 4-1~4-4 동기화
         </div>
         <MiniSelect
@@ -1538,7 +2198,14 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
   // 렌더
   // -----------------------------
   return !hasData ? (
-    <div style={{ padding: "16px 0 4px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
+    <div
+      style={{
+        padding: "16px 0 4px",
+        width: "100%",
+        maxWidth: "100%",
+        boxSizing: "border-box",
+      }}
+    >
       <p>그래프로 시각화할 데이터가 없습니다.</p>
     </div>
   ) : (
@@ -1558,53 +2225,7 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           marginBottom: 12,
           flexWrap: "wrap",
         }}
-      >
-        {/* ✅ 기간만 좌측 */}
-        <div style={{ fontSize: 12, color: UI.sub, fontWeight: 900, whiteSpace: "nowrap" }}>
-          {selectedYear && selectedMonth ? (
-            <>
-              {selectedYear}년 {String(selectedMonth).padStart(2, "0")}월
-            </>
-          ) : (
-            <>기간 미선택</>
-          )}
-        </div>
-
-        {showCondBar && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center" }}>
-            <button style={exportBtn} onClick={() => exportToPDF(exportRef.current, exportFilename)} title="현재 시각화 화면을 PDF로 저장">
-              ⬇ EXPORT
-            </button>
-
-            {/* ✅ (유지) showCondBar=true일 때: 상단에서 세부조건 선택 */}
-            {shouldShowDetailPicker && (
-              <MiniSelect
-                value={detailPickAll}
-                onChange={(e) => setDetailPickAll(e.target.value)}
-                options={
-                  <>
-                    <option value="전체">세부조건: 전체(조건_전체)</option>
-                    {conditionDetailCodes.map((o) => (
-                      <option key={o.code} value={o.code}>
-                        세부조건: {o.label}
-                      </option>
-                    ))}
-                  </>
-                }
-              />
-            )}
-
-            {CONDITION_KEYS.map((c) => {
-              const active = c === effectiveCond;
-              return (
-                <button key={c} style={{ ...condBtnBase, ...(active ? condBtnActive : {}) }} onClick={() => onCondClick(c)}>
-                  {c}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      ></div>
 
       {/* ✅ EXPORT 대상: “시각화 영역만” */}
       <div
@@ -1631,21 +2252,66 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
             kicker="Revenue"
             title="당월 매출액 (선택 조건)"
             right={
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 6,
+                  flexWrap: "wrap",
+                  justifyContent: "flex-end",
+                }}
+              >
                 <Pill text={`국내 ${domesticPct.toFixed(1)}%`} tone="blue" />
                 <Pill text={`수출 ${exportPct.toFixed(1)}%`} tone="green" />
               </div>
             }
           >
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-                <div style={{ fontSize: 18, fontWeight: 950, color: UI.text, lineHeight: 1.1 }}>{formatNumber(totalSalesAll)} 원</div>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 18,
+                    fontWeight: 950,
+                    color: UI.text,
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {formatNumber(totalSalesAll)} 원
+                </div>
 
-                <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                  <div style={{ fontSize: 12, color: UI.sub, fontWeight: 950, whiteSpace: "nowrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 12,
+                    flexWrap: "wrap",
+                    justifyContent: "flex-end",
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: UI.sub,
+                      fontWeight: 950,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     국내 {formatNumber(domesticSales)}
                   </div>
-                  <div style={{ fontSize: 12, color: UI.sub, fontWeight: 950, whiteSpace: "nowrap" }}>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: UI.sub,
+                      fontWeight: 950,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
                     수출 {formatNumber(exportSales)}
                   </div>
                 </div>
@@ -1653,21 +2319,92 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
             </div>
           </Card>
 
-          <Card kicker="Operating" title="영업이익" right={<Pill text={`OPM ${formatRate(operatingMargin)}`} tone={operatingMargin >= 0 ? "blue" : "red"} />}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 72, justifyContent: "flex-start" }}>
-              <div style={{ fontSize: 18, fontWeight: 950, color: operatingIncome >= 0 ? Tone.green.fg : Tone.red.fg }}>{formatNumber(operatingIncome)} 원</div>
+          <Card
+            kicker="Operating"
+            title="영업이익"
+            right={
+              <Pill
+                text={`OPM ${formatRate(operatingMargin)}`}
+                tone={operatingMargin >= 0 ? "blue" : "red"}
+              />
+            }
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                minHeight: 72,
+                justifyContent: "flex-start",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 950,
+                  color: operatingIncome >= 0 ? Tone.green.fg : Tone.red.fg,
+                }}
+              >
+                {formatNumber(operatingIncome)} 원
+              </div>
             </div>
           </Card>
 
-          <Card kicker="Net" title="당기순이익" right={<Pill text={`NPM ${formatRate(netMargin)}`} tone={netMargin >= 0 ? "blue" : "red"} />}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 72, justifyContent: "flex-start" }}>
-              <div style={{ fontSize: 18, fontWeight: 950, color: netIncome >= 0 ? Tone.green.fg : Tone.red.fg }}>{formatNumber(netIncome)} 원</div>
+          <Card
+            kicker="Net"
+            title="당기순이익"
+            right={
+              <Pill
+                text={`NPM ${formatRate(netMargin)}`}
+                tone={netMargin >= 0 ? "blue" : "red"}
+              />
+            }
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                minHeight: 72,
+                justifyContent: "flex-start",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 950,
+                  color: netIncome >= 0 ? Tone.green.fg : Tone.red.fg,
+                }}
+              >
+                {formatNumber(netIncome)} 원
+              </div>
             </div>
           </Card>
 
-          <Card kicker="Cost" title="영업비용 (원가+판관비)" right={<Pill text={`영업비용률 ${formatRate(operatingCostRatio)}`} tone={operatingCostRatio >= 0 ? "red" : "blue"} />}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6, minHeight: 72, justifyContent: "flex-start" }}>
-              <div style={{ fontSize: 18, fontWeight: 950, color: Tone.red.fg }}>{formatNumber(operatingCost)} 원</div>
+          <Card
+            kicker="Cost"
+            title="영업비용 (원가+판관비)"
+            right={
+              <Pill
+                text={`영업비용률 ${formatRate(operatingCostRatio)}`}
+                tone={operatingCostRatio >= 0 ? "red" : "blue"}
+              />
+            }
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                minHeight: 72,
+                justifyContent: "flex-start",
+              }}
+            >
+              <div
+                style={{ fontSize: 18, fontWeight: 950, color: Tone.red.fg }}
+              >
+                {formatNumber(operatingCost)} 원
+              </div>
               <div style={{ fontSize: 12, color: UI.mute, fontWeight: 900 }}>
                 원가 {formatNumber(cogs)} / 판관비 {formatNumber(sga)}
               </div>
@@ -1678,31 +2415,93 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
         {effectiveCond === "전체" && (
           <>
             <Card kicker="Ratios" title="대표 경영지표 — 매출 대비 비율">
-              <div style={{ width: "100%", display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 18, alignItems: "start" }}>
+              <div
+                style={{
+                  width: "100%",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                  gap: 18,
+                  alignItems: "start",
+                }}
+              >
                 {ratioItems.map((it) => {
                   const ratioText = `${it.ratio.toFixed(1)}%`;
-                  return <Donut key={it.key} ratioAbs={it.ratioAbs} label={it.label} sub={it.sub} ratioText={ratioText} formula={it.formula} color={it.color} />;
+                  return (
+                    <Donut
+                      key={it.key}
+                      ratioAbs={it.ratioAbs}
+                      label={it.label}
+                      sub={it.sub}
+                      ratioText={ratioText}
+                      formula={it.formula}
+                      color={it.color}
+                    />
+                  );
                 })}
               </div>
             </Card>
 
-            <Card kicker="Bridge" title="손익 워터폴 — 매출 → 원가/판관비 → 순이익">
+            <Card
+              kicker="Bridge"
+              title="손익 워터폴 — 매출 → 원가/판관비 → 순이익"
+            >
               <WaterfallPL height={460} />
             </Card>
 
-            <Card kicker="Sales Mix" title="매출 구조 — 전체 매출액 대비 비중 & 세부 구성">
-              <div style={{ width: "100%", display: "grid", gridTemplateColumns: "minmax(260px, 0.95fr) minmax(420px, 1.55fr) minmax(420px, 1.55fr)", gap: 12, alignItems: "start" }}>
-                <div style={{ border: UI.border, background: "#fff", padding: 12 }}>
-                  <div style={{ fontSize: 13, fontWeight: 950, color: UI.text, marginBottom: 10 }}>매출 비중 (Pie · 전체 매출액 대비)</div>
-                  <SalesMixPie totalSales={totalSalesAll} domValue={domesticSales} expValue={exportSales} />
+            <Card
+              kicker="Sales Mix"
+              title="매출 구조 — 전체 매출액 대비 비중 & 세부 구성"
+            >
+              <div
+                style={{
+                  width: "100%",
+                  display: "grid",
+                  gridTemplateColumns:
+                    "minmax(260px, 0.95fr) minmax(420px, 1.55fr) minmax(420px, 1.55fr)",
+                  gap: 12,
+                  alignItems: "start",
+                }}
+              >
+                <div
+                  style={{ border: UI.border, background: "#fff", padding: 12 }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 950,
+                      color: UI.text,
+                      marginBottom: 10,
+                    }}
+                  >
+                    매출 비중 (Pie · 전체 매출액 대비)
+                  </div>
+                  <SalesMixPie
+                    totalSales={totalSalesAll}
+                    domValue={domesticSales}
+                    expValue={exportSales}
+                  />
                 </div>
 
-                <div style={{ border: UI.border, background: "#fff", padding: 12 }}>
-                  <TotalSalesDetailSegment title="국내매출 세부 항목" totalValue={domesticDetail.total} items={domesticDetail_salesShare.items} showSegment={false} />
+                <div
+                  style={{ border: UI.border, background: "#fff", padding: 12 }}
+                >
+                  <TotalSalesDetailSegment
+                    title="국내매출 세부 항목"
+                    totalValue={domesticDetail.total}
+                    items={domesticDetail_salesShare.items}
+                    showSegment={false}
+                  />
                 </div>
 
-                <div style={{ border: UI.border, background: "#fff", padding: 12 }}>
-                  <TotalSalesDetailSegment title="수출매출 세부 항목" totalValue={exportDetail.total} items={exportDetail_salesShare.items} showSegment={false} />
+                <div
+                  style={{ border: UI.border, background: "#fff", padding: 12 }}
+                >
+                  <TotalSalesDetailSegment
+                    title="수출매출 세부 항목"
+                    totalValue={exportDetail.total}
+                    items={exportDetail_salesShare.items}
+                    showSegment={false}
+                  />
                 </div>
               </div>
             </Card>
@@ -1714,51 +2513,123 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
           <Card
             kicker="Bridge"
             title={`조건별 손익 워터폴 — ${effectiveCond}`}
-            right={<Pill text={`세부조건: ${detailPickAll === "전체" ? "전체" : detailPickAll}`} tone="slate" />}
+            right={
+              <Pill
+                text={`세부조건: ${
+                  detailPickAll === "전체" ? "전체" : detailPickAll
+                }`}
+                tone="slate"
+              />
+            }
           >
             <WaterfallPL height={460} colNameOverride={condWaterfallCol} />
           </Card>
         )}
 
         {effectiveCond !== "전체" && (
-          <Card kicker="Segment" title={`조건별 손익 KPI Top 10 — ${effectiveCond}`} right={<Pill text="코드별 기여도" tone="blue" />}>
+          <Card
+            kicker="Segment"
+            title={`조건별 손익 KPI Top 10 — ${effectiveCond}`}
+            right={<Pill text="코드별 기여도" tone="blue" />}
+          >
             <GridRow min={360} gap={10}>
               {KPI_ORDER.map((kpi) => (
-                <RankTop10Card key={kpi} title={kpi} data={conditionKpiTop10?.[kpi]} />
+                <RankTop10Card
+                  key={kpi}
+                  title={kpi}
+                  data={conditionKpiTop10?.[kpi]}
+                />
               ))}
             </GridRow>
           </Card>
         )}
 
         {effectiveCond !== "전체" && (
-          <Card kicker="Sales Mix" title={`조건별 국내/수출 매출 Top 10 — ${effectiveCond}`} right={<Pill text="Top10 누적 + 상세" tone="blue" />}>
+          <Card
+            kicker="Sales Mix"
+            title={`조건별 국내/수출 매출 Top 10 — ${effectiveCond}`}
+            right={<Pill text="Top10 누적 + 상세" tone="blue" />}
+          >
             <GridRow min={520} gap={10}>
-              <ConditionSegmentWithList title="국내매출액" data={conditionDomesticTop10} />
-              <ConditionSegmentWithList title="수출매출액" data={conditionExportTop10} />
+              <ConditionSegmentWithList
+                title="국내매출액"
+                data={conditionDomesticTop10}
+              />
+              <ConditionSegmentWithList
+                title="수출매출액"
+                data={conditionExportTop10}
+              />
             </GridRow>
           </Card>
         )}
 
         <FourColRow gap={12}>
           {[
-            { kicker: "Cost Driver", title: "4-1. 매출원가 세부 항목 Top 10", data: cogsDetailTop10_salesShare, emptyMsg: '"매출원가계" 하위 세부 항목 데이터가 없습니다.', mode: "normal" },
-            { kicker: "SG&A Driver", title: "4-2. 판관비 세부 항목 Top 10", data: sgaDetailTop10_salesShare, emptyMsg: "판관비 관련 세부 항목 데이터가 없습니다.", mode: "normal" },
-            { kicker: "Non-Op Income", title: "4-3. 영업외수익 세부 항목 Top 10", data: nonOpIncomeDetailTop10_salesShare, emptyMsg: "영업외수익 관련 세부 항목 데이터가 없습니다.", mode: "diverging" },
-            { kicker: "Non-Op Expense", title: "4-4. 영업외비용 세부 항목 Top 10", data: nonOpExpenseDetailTop10_salesShare, emptyMsg: "영업외비용 관련 세부 항목 데이터가 없습니다.", mode: "diverging" },
+            {
+              kicker: "Cost Driver",
+              title: "4-1. 매출원가 세부 항목 Top 10",
+              data: cogsDetailTop10_salesShare,
+              emptyMsg: '"매출원가계" 하위 세부 항목 데이터가 없습니다.',
+              mode: "normal",
+            },
+            {
+              kicker: "SG&A Driver",
+              title: "4-2. 판관비 세부 항목 Top 10",
+              data: sgaDetailTop10_salesShare,
+              emptyMsg: "판관비 관련 세부 항목 데이터가 없습니다.",
+              mode: "normal",
+            },
+            {
+              kicker: "Non-Op Income",
+              title: "4-3. 영업외수익 세부 항목 Top 10",
+              data: nonOpIncomeDetailTop10_salesShare,
+              emptyMsg: "영업외수익 관련 세부 항목 데이터가 없습니다.",
+              mode: "diverging",
+            },
+            {
+              kicker: "Non-Op Expense",
+              title: "4-4. 영업외비용 세부 항목 Top 10",
+              data: nonOpExpenseDetailTop10_salesShare,
+              emptyMsg: "영업외비용 관련 세부 항목 데이터가 없습니다.",
+              mode: "diverging",
+            },
           ].map((cfg, idx) => (
             <Card
               key={idx}
               kicker={cfg.kicker}
               title={cfg.title}
-              right={effectiveCond !== "전체" ? <Pill text={`세부조건: ${detailPickAll === "전체" ? "전체" : detailPickAll}`} tone="slate" /> : <Pill text="OVERALL" tone="blue" />}
+              right={
+                effectiveCond !== "전체" ? (
+                  <Pill
+                    text={`세부조건: ${
+                      detailPickAll === "전체" ? "전체" : detailPickAll
+                    }`}
+                    tone="slate"
+                  />
+                ) : (
+                  <Pill text="OVERALL" tone="blue" />
+                )
+              }
             >
               {(cfg.data?.items || []).length === 0 ? (
-                <div style={{ fontSize: 12, color: UI.mute }}>{cfg.emptyMsg}</div>
+                <div style={{ fontSize: 12, color: UI.mute }}>
+                  {cfg.emptyMsg}
+                </div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <div
+                  style={{ display: "flex", flexDirection: "column", gap: 10 }}
+                >
                   {(() => {
                     const items = cfg.data.items || [];
-                    const maxAbs = cfg.mode === "diverging" ? Math.max(...items.map((it) => Math.abs(Number(it.share) || 0)), 1) : 1;
+                    const maxAbs =
+                      cfg.mode === "diverging"
+                        ? Math.max(
+                            ...items.map((it) =>
+                              Math.abs(Number(it.share) || 0)
+                            ),
+                            1
+                          )
+                        : 1;
 
                     return (
                       <>
@@ -1767,20 +2638,39 @@ function PlReportGraphTab({ rows, selectedCond, selectedYear, selectedMonth, set
                           const salesPct = Number(it.shareSales) || 0;
 
                           return (
-                            <div key={it.name} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                            <div
+                              key={it.name}
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 6,
+                              }}
+                            >
                               <LabelRow
                                 left={it.name}
                                 right={
                                   <>
-                                    {formatNumber(it.value)} <span style={{ color: UI.sub, fontWeight: 950 }}>(매출액 대비 {salesPct.toFixed(1)}%)</span>
+                                    {formatNumber(it.value)}{" "}
+                                    <span
+                                      style={{ color: UI.sub, fontWeight: 950 }}
+                                    >
+                                      (매출액 대비 {salesPct.toFixed(1)}%)
+                                    </span>
                                   </>
                                 }
                               />
 
                               {cfg.mode === "diverging" ? (
-                                <DivergingBar pct={parentPct} maxAbs={maxAbs} color={getDivergingColor(parentPct)} />
+                                <DivergingBar
+                                  pct={parentPct}
+                                  maxAbs={maxAbs}
+                                  color={getDivergingColor(parentPct)}
+                                />
                               ) : (
-                                <Bar pct={Math.min(Math.abs(parentPct), 100)} color={getShareColor(Math.abs(parentPct))} />
+                                <Bar
+                                  pct={Math.min(Math.abs(parentPct), 100)}
+                                  color={getShareColor(Math.abs(parentPct))}
+                                />
                               )}
                             </div>
                           );
