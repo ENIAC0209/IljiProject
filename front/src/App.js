@@ -20,9 +20,7 @@ import {
 } from "./config/plConfig";
 
 // ✅ 기존 탭들
-import OverviewTab from "./components/tabs/OverviewTab";
 import ClosingTab from "./components/tabs/ClosingTab";
-import VarianceTab from "./components/tabs/VarianceTab";
 import PlReportTab from "./components/tabs/PlReportTab";
 
 // ✅ 주제3-4 추가 탭
@@ -33,11 +31,9 @@ import ForecastTab from "./components/tabs/ForecastTab";
 import LoginPage from "./pages/loginPage";
 
 // ✅ 아이콘 (첨부 순서대로)
-import iconApps from "./assets/icons/apps.png";
 import iconCheck from "./assets/icons/checkbox.png";
-import iconSignal from "./assets/icons/signal.png";
-import iconDoc from "./assets/icons/document.png";
 import iconChart from "./assets/icons/chart.png";
+import iconDoc from "./assets/icons/document.png";
 
 // ✅ 사이드바 분리 컴포넌트
 import SidebarIcons from "./components/sidebar/SidebarIcons";
@@ -111,7 +107,7 @@ function App() {
   // ✅ 주제3/4: 업로드한 파일 자체 보관(서버로 보낼 때 사용)
   const [backFile, setBackFile] = useState(null);
 
-  const [tab, setTab] = useState("overview");
+  const [tab, setTab] = useState("closing");
 
   // ✅ 비용 탭용 Month (기존 유지)
   const [selectedMonth, setSelectedMonth] = useState("");
@@ -1074,68 +1070,6 @@ function App() {
     return { rows: rows.slice(0, 30), history };
   }, [anomalyData, costData, costMonthMeta]);
 
-  // Variance 탭
-  const varianceData = useMemo(() => {
-    if (!costData || costMonthMeta.length < 2) return [];
-
-    const lastMeta = costMonthMeta[costMonthMeta.length - 1];
-    const prevMeta = costMonthMeta[costMonthMeta.length - 2];
-
-    const sample = costData[0] || {};
-    const keys = Object.keys(sample);
-
-    const accNameKey =
-      keys.find((k) => k.includes("계정명")) ||
-      keys.find((k) => k.includes("계정") && !k.includes("코드")) ||
-      keys.find((k) => /account.?name/i.test(k));
-    const accCodeKey =
-      keys.find((k) => k.includes("계정코드")) ||
-      keys.find((k) => /account.?code/i.test(k));
-
-    const grouped = {};
-    costData.forEach((row) => {
-      const name = (accNameKey && row[accNameKey]) || "계정";
-      const code = (accCodeKey && row[accCodeKey]) || "";
-      const key = String(code) + "|" + String(name);
-      if (!grouped[key]) {
-        grouped[key] = {
-          accountCode: String(code),
-          accountName: String(name),
-          lastMonth: 0,
-          thisMonth: 0,
-        };
-      }
-      const lastVal = Number(row[prevMeta.col]) || 0;
-      const curVal = Number(row[lastMeta.col]) || 0;
-      grouped[key].lastMonth += lastVal;
-      grouped[key].thisMonth += curVal;
-    });
-
-    let arr = Object.values(grouped);
-    arr.forEach((a) => {
-      const diff = a.thisMonth - a.lastMonth;
-      const rate = a.lastMonth ? (diff / a.lastMonth) * 100 : 0;
-      a.diff = diff;
-      a.rate = rate;
-    });
-
-    arr.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
-    return arr.slice(0, 10);
-  }, [costData, costMonthMeta]);
-
-  const varianceSummary = useMemo(() => {
-    if (!varianceData.length) return null;
-    let totalDiff = 0;
-    let pos = 0;
-    let neg = 0;
-    varianceData.forEach((a) => {
-      totalDiff += a.diff;
-      if (a.diff > 0) pos += a.diff;
-      else if (a.diff < 0) neg += a.diff;
-    });
-    return { totalDiff, pos, neg, count: varianceData.length };
-  }, [varianceData]);
-
   // KPI (Overview)
   const kpi = useMemo(() => {
     if (!monthlyTotalCost.length || !selectedMonth) {
@@ -1417,22 +1351,10 @@ function App() {
   // ✅ 사이드메뉴: "그래프 전용 페이지" 항목 제거
   const sideMenus = [
     {
-      id: "overview",
-      label: "Dashboard",
-      desc: "AI 결산 요약",
-      icon: iconApps,
-    },
-    {
       id: "closing",
       label: "Closing Check",
       desc: "누락·이상 계정",
       icon: iconCheck,
-    },
-    {
-      id: "variance",
-      label: "Variance",
-      desc: "전월 대비 분석",
-      icon: iconSignal,
     },
     {
       id: "pl_group",
@@ -1892,7 +1814,7 @@ function App() {
                           letterSpacing: -0.2,
                         }}
                       >
-                        {currentMenu?.label || "Dashboard"}
+                        {currentMenu?.label || "Closing Check"}
                       </span>
                     </div>
 
@@ -1904,7 +1826,7 @@ function App() {
                         marginLeft: 14,
                       }}
                     >
-                      {currentMenu?.desc || "AI 결산 요약"}
+                      {currentMenu?.desc || "누락·이상 계정"}
                     </span>
                   </div>
 
@@ -2037,23 +1959,6 @@ function App() {
         </header>
 
         {/* 탭별 렌더링 */}
-        {tab === "overview" && (
-          <OverviewTab
-            kpi={kpi}
-            monthlyTotalCost={monthlyTotalCost}
-            costMonthMeta={costMonthMeta}
-            selectedMonth={selectedMonth}
-            setSelectedMonth={setSelectedMonth}
-            accountGroupShare={accountGroupShare}
-            topCostCenters={topCostCenters}
-            closingAnalysis={closingAnalysis}
-            anomalyResult={anomalyResult}
-            varianceSummary={varianceSummary}
-            varianceData={varianceData}
-            cardStyle={cardStyle}
-          />
-        )}
-
         {tab === "closing" && (
           <ClosingTab
             closingAnalysis={closingAnalysis}
@@ -2070,21 +1975,6 @@ function App() {
             // ✅ (추가) 백엔드 심화분류 맵 전달
             advancedByCcAcc={advancedByCcAcc}
             advancedByAcc={advancedByAcc}
-          />
-        )}
-
-        {tab === "variance" && (
-          <VarianceTab
-            varianceData={varianceData}
-            varianceSummary={varianceSummary}
-            monthlyTotalCost={monthlyTotalCost}
-            costMonthMeta={costMonthMeta}
-            costData={costData}
-            selectedMonth={selectedMonth}
-            setSelectedMonth={setSelectedMonth}
-            accountGroupShare={accountGroupShare}
-            closingAnalysis={closingAnalysis}
-            cardStyle={cardStyle}
           />
         )}
 
