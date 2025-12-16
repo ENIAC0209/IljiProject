@@ -133,6 +133,9 @@ function App() {
   // ✅ P&L 계열 탭 판별 (그래프 전용 페이지 제거)
   const isPlReportTab = tab === "pl-report-basic" || tab === "pl-report-cause";
 
+  // ✅ (추가) closing 탭에서 Month 선택 잠금
+  const lockMonthSelect = tab === "closing";
+
   // 업로드 input ref
   const costFileInputRef = useRef(null); // 코스트센터 (1~3탭)
   const plFileInputRef = useRef(null); // 결산보고서 Back data (P&L용)
@@ -220,7 +223,9 @@ function App() {
           setAnomalyError(null);
           setInitProgress(60);
 
-          const res2 = await fetch(`${API_BASE}/api/cost-center/analyze-default`);
+          const res2 = await fetch(
+            `${API_BASE}/api/cost-center/analyze-default`
+          );
 
           if (!res2.ok) {
             const msg = `analyze-default HTTP ${res2.status}`;
@@ -328,8 +333,7 @@ function App() {
 
     let mounted = true;
 
-    const normalizeYm = (y, m) =>
-      `${String(y)}-${String(m).padStart(2, "0")}`;
+    const normalizeYm = (y, m) => `${String(y)}-${String(m).padStart(2, "0")}`;
 
     async function loadPeriods() {
       // 1) 서버 endpoint가 있으면 사용
@@ -373,12 +377,7 @@ function App() {
             r.fiscal_year ??
             r["연도"] ??
             r["년도"];
-          const m =
-            r.month ??
-            r.Month ??
-            r.월 ??
-            r.fiscal_month ??
-            r["월"];
+          const m = r.month ?? r.Month ?? r.월 ?? r.fiscal_month ?? r["월"];
           if (y && m) ymList.push(normalizeYm(y, m));
           else if (r.year_month || r.yearMonth || r["년월"]) {
             const raw = String(r.year_month || r.yearMonth || r["년월"]);
@@ -1415,7 +1414,6 @@ function App() {
     padding: 14,
   };
 
-
   // ✅ 사이드메뉴: "그래프 전용 페이지" 항목 제거
   const sideMenus = [
     {
@@ -1444,7 +1442,7 @@ function App() {
       children: [
         { id: "pl-report-basic", label: "기본", desc: "표/요약" },
         { id: "pl-report-cause", label: "심화", desc: "원인 분석" },
-  ],
+      ],
     },
     {
       id: "forecast",
@@ -1619,7 +1617,9 @@ function App() {
           </div>
         </div>
 
-        <div style={{ width: 260, marginTop: 8, fontSize: 11, color: "#6b7280" }}>
+        <div
+          style={{ width: 260, marginTop: 8, fontSize: 11, color: "#6b7280" }}
+        >
           <div
             style={{
               marginBottom: 6,
@@ -1870,8 +1870,12 @@ function App() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{ display: "flex", flexDirection: "column", gap: 4 }}
+                  >
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 10 }}
+                    >
                       <span
                         style={{
                           width: 4,
@@ -1916,15 +1920,23 @@ function App() {
                     <span style={chipBase}>
                       <span>Month:</span>
                       <select
-                        value={isPlReportTab ? selectedReportYm || "" : selectedMonth || ""}
+                        value={
+                          isPlReportTab
+                            ? selectedReportYm || ""
+                            : selectedMonth || ""
+                        }
+                        onMouseDown={(e) => {
+                          if (lockMonthSelect) e.preventDefault(); // ✅ closing 탭에서만 열림 차단
+                        }}
+                        onKeyDown={(e) => {
+                          if (lockMonthSelect) e.preventDefault(); // ✅ closing 탭에서만 키보드 차단
+                        }}
                         onChange={(e) => {
+                          if (lockMonthSelect) return; // ✅ closing 탭에서만 값 변경 무시
                           const v = e.target.value;
                           if (isPlReportTab) setSelectedReportYm(v);
                           else setSelectedMonth(v);
                         }}
-                        disabled={
-                          isPlReportTab ? !reportPeriods?.length : !costMonthMeta?.length
-                        }
                         style={{
                           border: "none",
                           outline: "none",
@@ -1934,14 +1946,7 @@ function App() {
                           fontSize: 10,
                           fontWeight: 800,
                           color: "#0f172a",
-                          cursor:
-                            isPlReportTab
-                              ? reportPeriods?.length
-                                ? "pointer"
-                                : "not-allowed"
-                              : costMonthMeta?.length
-                              ? "pointer"
-                              : "not-allowed",
+                          cursor: "pointer", // 🔴 빨간 금지 커서 안 뜸
                           appearance: "none",
                           WebkitAppearance: "none",
                           MozAppearance: "none",
@@ -1967,6 +1972,7 @@ function App() {
                           ))
                         )}
                       </select>
+
                       <span
                         style={{
                           color: "#64748b",
@@ -2084,8 +2090,6 @@ function App() {
 
         {/* ✅ 주제3: P&L 기본 (표 페이지) */}
         {tab === "pl-report-basic" && (
-
-
           <PlReportTab
             // ✅ report_data 기준 Month 전달(추가)
             selectedYm={selectedReportYm}
@@ -2117,7 +2121,6 @@ function App() {
         {tab === "pl-report-cause" && (
           <PlReportCauseTab selectedYm={selectedReportYm} />
         )}
-
 
         {tab === "forecast" && <ForecastTab cardStyle={cardStyle} />}
       </main>

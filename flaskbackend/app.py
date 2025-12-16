@@ -1,12 +1,17 @@
 # =========================
-# app.py  (MODIFIED - 고정비/변동비/시즌·이벤트성만 표시)
+# app.py  (MODIFIED - 시즌/이벤트성 규칙을 이상/누락 판단 + 사유에 반영)
 #  - 기능/엔드포인트/로직은 그대로
 #  - 심화분류(advancedMap)는 3개 값만 나오도록 정규화 + 필터
 #  - /api/init-data 에 advancedMap 포함(프론트 배지 표시용)
 #  - 누락되어 있던 유틸(_parse_year_month_from_upload_filename, _find_existing_pl_files_for_period) 추가
-#  - ✅ (추가) 사유요약에 전월대비 변동% 포함
-#  - ✅ (추가) 직전 3개월 유효값 있으면 12개월 언급 X / 없으면 12개월 유효값 O/X 표시
+#  - ✅ 사유요약에 전월대비 변동% 포함
+#  - ✅ 직전 3개월 유효값 있으면 12개월 언급 X / 없으면 12개월 유효값 O/X 표시
+#  - ✅ (추가) 시즌/이벤트성 비용 규칙(상여/포상비/법인세)로:
+#       * 비발생 월 0/결측은 정상 처리
+#       * 발생 월 0/결측은 누락 처리 강화
+#       * 비발생 월 금액 발생은 이상 처리 강화
 # =========================
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
@@ -30,7 +35,6 @@ import numpy as np
 # =====================================================
 USE_DB_AUTH = False  # ✅ 기본: 데모 모드
 # USE_DB_AUTH = True  # ✅ DB 모드
-
 
 # =========================
 # 🔥 모듈 경로 강제 추가 (중요)
@@ -107,8 +111,6 @@ def get_connection():
 
 # =====================================================
 # ✅ 심화분류(고정비/변동비/시즌·이벤트성만 표시되게 정규화)
-#  - 반환값을 3개로 "고정비", "변동비", "시즌/이벤트성"만 허용
-#  - 그 외는 "" 로 처리 → 프론트에서 배지 미표시
 # =====================================================
 _ALLOWED_ADV = {"고정비", "변동비", "시즌/이벤트성"}
 
@@ -118,17 +120,14 @@ def _normalize_advanced(v) -> str:
     if not s:
         return ""
 
-    # 시즌/이벤트성 (표기 통일)
     if s in ("시즌/이벤트", "시즌", "이벤트", "시즌성", "시즌·이벤트성", "시즌/이벤트성"):
         return "시즌/이벤트성"
 
-    # 고정비/변동비
     if s == "고정비":
         return "고정비"
     if s == "변동비":
         return "변동비"
 
-    # 키워드 기반 보정
     if re.search(r"고정", s):
         return "고정비"
     if re.search(r"변동", s):
@@ -136,7 +135,6 @@ def _normalize_advanced(v) -> str:
     if re.search(r"시즌|이벤트", s):
         return "시즌/이벤트성"
 
-    # 그 외는 표시 안 함
     return ""
 
 
@@ -154,7 +152,6 @@ def load_advanced_class_map(use_cache: bool = True) -> Dict[str, Dict[str, str]]
         try:
             with open(cache_path, "rb") as f:
                 payload = pickle.load(f)
-            # ✅ 혹시 과거 캐시에 다른 값이 섞여 있어도 3개만 남김
             byCcAcc = {k: v for k, v in (payload.get("byCcAcc") or {}).items() if v in _ALLOWED_ADV}
             byAcc = {k: v for k, v in (payload.get("byAcc") or {}).items() if v in _ALLOWED_ADV}
             return {"byCcAcc": byCcAcc, "byAcc": byAcc}
@@ -187,7 +184,6 @@ def load_advanced_class_map(use_cache: bool = True) -> Dict[str, Dict[str, str]]
         cc = str(cc_raw or "").strip()
         cls = _normalize_advanced(cls_raw)
 
-        # ✅ 3개 외는 cls="" → 저장하지 않음
         if not acc or cls not in _ALLOWED_ADV:
             continue
 
@@ -209,9 +205,238 @@ def load_advanced_class_map(use_cache: bool = True) -> Dict[str, Dict[str, str]]
 
 
 # =====================================================
+# ✅ 시즌/이벤트성 비용 규칙(상여/포상비/법인세)
+# =====================================================
+_SPECIAL_RULES = [
+    # 노무비-상여: 2개월 주기(격월). 시작(홀/짝)은 데이터에서 자동 추정.
+    {
+        "key": "BONUS_BIMONTHLY",
+        "name": "노무비-상여",
+        "pattern": re.compile(r"노무비\s*[-–—]\s*상여", re.IGNORECASE),
+        "type": "bimonthly",
+        "tags": ["반복", "이벤트"],
+    },
+    # 복리후생비-포상비: 2,9,11월만 발생
+    {
+        "key": "REWARD_EVENT",
+        "name": "복리후생비-포상비",
+        "pattern": re.compile(r"복리후생비\s*[-–—]\s*포상비", re.IGNORECASE),
+        "type": "fixed_months",
+        "months": {2, 9, 11},
+        "tags": ["시즌", "이벤트"],
+    },
+    # 법인세 비용: 3,6,9,12월만 발생
+    {
+        "key": "CORP_TAX_QUARTERLY",
+        "name": "법인세 비용",
+        "pattern": re.compile(r"법인세\s*비용", re.IGNORECASE),
+        "type": "fixed_months",
+        "months": {3, 6, 9, 12},
+        "tags": ["반복", "이벤트"],
+    },
+]
+
+
+def _match_special_rule(account_name: str) -> Optional[Dict[str, Any]]:
+    s = str(account_name or "").strip()
+    if not s:
+        return None
+    for rule in _SPECIAL_RULES:
+        if rule["pattern"].search(s):
+            return rule
+    return None
+
+
+def _is_missing_like_amount(x) -> bool:
+    if x is None or pd.isna(x):
+        return True
+    try:
+        return float(x) == 0.0
+    except Exception:
+        return True
+
+
+def _ensure_list_tags(v):
+    if v is None:
+        return []
+    if isinstance(v, list):
+        return [str(x) for x in v if str(x).strip() != ""]
+    if isinstance(v, tuple):
+        return [str(x) for x in v if str(x).strip() != ""]
+    if isinstance(v, str):
+        s = v.strip()
+        if not s:
+            return []
+        # "['a','b']" 같은 문자열이 들어오는 경우 대비
+        if s.startswith("[") and s.endswith("]"):
+            inner = s[1:-1].strip()
+            if not inner:
+                return []
+            parts = [p.strip().strip("'").strip('"') for p in inner.split(",")]
+            return [p for p in parts if p]
+        return [s]
+    try:
+        return list(v)
+    except Exception:
+        return []
+
+
+def _add_tags(existing: Any, add: List[str]) -> List[str]:
+    base = _ensure_list_tags(existing)
+    for t in add:
+        if t not in base:
+            base.append(t)
+    return base
+
+
+def _infer_bimonthly_parity_for_group(g: pd.DataFrame) -> int:
+    """
+    격월 패턴의 '발생 월(홀/짝)'을 과거 발생(>0) 데이터에서 추정.
+    반환: 0(짝수월 발생) 또는 1(홀수월 발생)
+    """
+    # 최근 24개월 정도만 보되, 충분히 없으면 전체
+    g2 = g.sort_values(["year", "month"]).tail(24).copy()
+
+    occur = g2[~g2["amount"].apply(_is_missing_like_amount)]
+    if occur.empty:
+        # 근거가 없으면 관성적으로 "짝수월"로 둠(임의)
+        return 0
+
+    occur["parity"] = occur["month"].astype(int) % 2
+    counts = occur["parity"].value_counts().to_dict()
+    c0 = int(counts.get(0, 0))
+    c1 = int(counts.get(1, 0))
+
+    if c0 == c1:
+        # 동률이면 최신 발생 월의 parity
+        last_m = int(occur.iloc[-1]["month"])
+        return last_m % 2
+    return 0 if c0 > c1 else 1
+
+
+def apply_season_event_rules(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    시즌/이벤트성 규칙을 issue_type/anomaly_flag/severity_rank/reason에 반영.
+    - 비발생 월: 0/결측은 정상 처리
+    - 발생 월: 0/결측은 누락(결측 의심) 강화
+    - 비발생 월: 금액 발생은 이상 강화
+    """
+    need = {"account_name", "year", "month", "amount", "cost_center", "account_code"}
+    if (need - set(df.columns)):
+        return df
+
+    df = df.copy()
+
+    # reason_kor / reason_tags 없을 수 있음
+    if "reason_kor" not in df.columns:
+        df["reason_kor"] = ""
+    if "reason_tags" not in df.columns:
+        df["reason_tags"] = [[] for _ in range(len(df))]
+
+    # 기본 컬럼 방어
+    if "issue_type" not in df.columns:
+        df["issue_type"] = "정상"
+    if "severity_rank" not in df.columns:
+        df["severity_rank"] = 1
+    if "anomaly_flag" not in df.columns:
+        df["anomaly_flag"] = False
+
+    # 격월(상여) parity 맵 추정
+    bonus_mask = df["account_name"].astype(str).apply(lambda s: bool(_SPECIAL_RULES[0]["pattern"].search(s)))
+    bonus_df = df[bonus_mask].copy()
+
+    parity_map: Dict[str, int] = {}
+    if not bonus_df.empty:
+        for (cc, acc), g in bonus_df.groupby(["cost_center", "account_code"], dropna=False):
+            key = f"{cc}|{acc}"
+            parity_map[key] = _infer_bimonthly_parity_for_group(g)
+
+    # row-by-row 적용 (데이터량이 큰 편이어도 보통 수만행 수준이라 이 정도는 OK)
+    for idx, row in df.iterrows():
+        rule = _match_special_rule(row.get("account_name"))
+        if not rule:
+            continue
+
+        m = int(row.get("month"))
+        key = f"{row.get('cost_center')}|{row.get('account_code')}"
+        amt_missing_like = _is_missing_like_amount(row.get("amount"))
+
+        expected_occurs = True
+        rule_desc = ""
+
+        if rule["type"] == "fixed_months":
+            months_set = set(rule.get("months") or set())
+            expected_occurs = (m in months_set)
+            rule_desc = f"{sorted(list(months_set))}월 발생"
+        elif rule["type"] == "bimonthly":
+            parity = parity_map.get(key, 0)
+            expected_occurs = (m % 2 == parity)
+            rule_desc = "2개월 주기(격월) 발생"
+
+        # 태그 추가(항상)
+        df.at[idx, "reason_tags"] = _add_tags(df.at[idx, "reason_tags"], rule.get("tags", []))
+
+        # -----------------------------
+        # 케이스 1) 비발생 월인데 0/결측 -> 정상 처리(결측 잡혔어도 되돌림)
+        # -----------------------------
+        if (not expected_occurs) and amt_missing_like:
+            # issue_type이 결측 의심이더라도 정상으로 되돌림
+            df.at[idx, "issue_type"] = "정상"
+            df.at[idx, "anomaly_flag"] = False
+            df.at[idx, "severity_rank"] = 0
+
+            # reason_kor는 "문제 행"에만 주로 쓰지만, 혹시 프론트에서 상세를 볼 때 도움이 되도록 남김
+            msg = f"[규칙반영] {rule['name']}은(는) {rule_desc} → 해당 월은 비발생이 정상입니다."
+            rk = str(df.at[idx, "reason_kor"] or "").strip()
+            df.at[idx, "reason_kor"] = (rk + " " + msg).strip()
+
+            # 결측/0값 태그는 굳이 붙이지 않음(정상 처리이므로)
+            continue
+
+        # -----------------------------
+        # 케이스 2) 발생 월인데 0/결측 -> 누락(결측 의심) 강화
+        # -----------------------------
+        if expected_occurs and amt_missing_like:
+            df.at[idx, "issue_type"] = "결측 의심"
+            df.at[idx, "anomaly_flag"] = True
+            df.at[idx, "severity_rank"] = max(int(df.at[idx, "severity_rank"] or 1), 4)
+            df.at[idx, "reason_tags"] = _add_tags(df.at[idx, "reason_tags"], ["결측", "0값"])
+
+            msg = f"[규칙반영] {rule['name']}은(는) {rule_desc}인데 금액이 0/결측입니다 → 누락 가능성이 큽니다."
+            rk = str(df.at[idx, "reason_kor"] or "").strip()
+            df.at[idx, "reason_kor"] = (rk + " " + msg).strip()
+            continue
+
+        # -----------------------------
+        # 케이스 3) 비발생 월인데 금액 발생 -> 이상 강화
+        # -----------------------------
+        if (not expected_occurs) and (not amt_missing_like):
+            df.at[idx, "issue_type"] = "이상치 의심"
+            df.at[idx, "anomaly_flag"] = True
+            df.at[idx, "severity_rank"] = max(int(df.at[idx, "severity_rank"] or 1), 4)
+            df.at[idx, "reason_tags"] = _add_tags(df.at[idx, "reason_tags"], ["패턴이탈"])
+
+            msg = f"[규칙반영] {rule['name']}은(는) {rule_desc}인데 비발생 월에 금액이 발생했습니다 → 패턴 이탈 가능성."
+            rk = str(df.at[idx, "reason_kor"] or "").strip()
+            df.at[idx, "reason_kor"] = (rk + " " + msg).strip()
+            continue
+
+        # -----------------------------
+        # 케이스 4) 발생 월 & 금액 발생 -> 정상/이상 여부는 기존 모델 판단 유지
+        #  - 다만 사유에 '이벤트성 발생월' 힌트만 추가
+        # -----------------------------
+        if expected_occurs and (not amt_missing_like):
+            msg = f"[규칙반영] {rule['name']} 발생 월({rule_desc})입니다."
+            rk = str(df.at[idx, "reason_kor"] or "").strip()
+            # 너무 중복으로 길어질 수 있어, 같은 문구가 이미 있으면 추가하지 않음
+            if msg not in rk:
+                df.at[idx, "reason_kor"] = (rk + " " + msg).strip()
+
+    return df
+
+
+# =====================================================
 # ✅ (수정) 사유 요약 생성 유틸: 전월대비 % 포함 + 3개월/12개월 유효값 룰
-#  - 직전3개월 유효값 있으면: 12개월 언급 X
-#  - 직전3개월 유효값 없으면: 직전12개월 유효값 O/X 표시
 # =====================================================
 def _summarize_reason(
     reason_kor: str,
@@ -227,16 +452,6 @@ def _summarize_reason(
     lof_score=None,
     corr_score=None,
 ) -> str:
-
-    # -------------------------
-    # 0) 공통 유틸
-    # -------------------------
-    def _ox(v):
-        if v is True:
-            return "O"
-        if v is False:
-            return "X"
-        return "?"
 
     def _fmt_mom(pct):
         if pct is None or pd.isna(pct):
@@ -261,33 +476,21 @@ def _summarize_reason(
     rk = str(reason_kor or "").strip()
     tags_in = _as_list(reason_tags)
 
-    # -------------------------
-    # 1) 태그/키워드 정규화 규칙
-    #    - "reason_tags" + "reason_kor 문장" 모두에서 태그를 뽑아낸다
-    # -------------------------
     TAG_MAP = {
-        # 변동 방향/크기
         "급증": "급증", "상승": "급증", "increase": "급증",
         "급감": "급감", "하락": "급감", "decrease": "급감",
-
-        # 결측/0
         "결측": "결측", "누락": "결측", "missing": "결측",
         "0값": "0값", "0 값": "0값", "제로": "0값",
-
-        # 패턴/통계/모델
         "패턴이탈": "패턴이탈", "패턴 이탈": "패턴이탈",
         "밴드이탈": "패턴이탈", "band": "패턴이탈", "normal band": "패턴이탈",
         "zscore": "zscore", "z-score": "zscore", "z 점수": "zscore",
         "isolationforest": "IF", "isolation forest": "IF", "iforest": "IF",
         "lof": "LOF", "localoutlierfactor": "LOF", "local outlier factor": "LOF",
         "상관": "상관이상", "corr": "상관이상", "correlation": "상관이상",
-
-        # 기타(필요하면 확장)
         "반복": "반복",
         "계절": "시즌", "시즌": "시즌", "이벤트": "이벤트",
     }
 
-    # 요약에 보여줄 태그(너무 많아지면 가독성 떨어져서 제한)
     ORDER = ["결측", "0값", "급증", "급감", "패턴이탈", "zscore", "IF", "LOF", "상관이상", "반복", "시즌", "이벤트"]
     ALLOWED = set(ORDER)
 
@@ -300,27 +503,24 @@ def _summarize_reason(
         canon = str(canon).strip()
         return canon if canon in ALLOWED else None
 
-    # 1-A) reason_tags에서 수집
     bag = []
     for t in tags_in:
         c = _canonize(t)
         if c:
             bag.append(c)
 
-    # 1-B) reason_kor에서 키워드 자동 추출(문장에 단서가 있어도 태그로 승격)
-    #     - 필요하면 여기 패턴만 계속 늘리면 됨
     rk_low = rk.lower()
     heuristics = [
         ("결측", [r"결측", r"누락", r"비어", r"없음", r"missing"]),
         ("0값",  [r"\b0\b", r"0원", r"영원", r"제로", r"0값"]),
-        ("패턴이탈", [r"밴드", r"상한", r"하한", r"범위", r"pattern", r"패턴"]),
+        ("패턴이탈", [r"밴드", r"상한", r"하한", r"범위", r"pattern", r"패턴", r"이탈"]),
         ("zscore", [r"z\s*score", r"z-?score", r"z점수"]),
-        ("IF", [r"isolation", r"iforest", r"iso"]),
+        ("IF", [r"isolation", r"iforest", r"\biso\b"]),
         ("LOF", [r"\blof\b", r"local\s*outlier"]),
         ("상관이상", [r"상관", r"corr", r"correlation"]),
         ("반복", [r"주기", r"반복", r"격월", r"매월", r"분기"]),
         ("시즌", [r"계절", r"시즌"]),
-        ("이벤트", [r"이벤트", r"명절", r"창립", r"연말", r"프로모션"]),
+        ("이벤트", [r"이벤트", r"명절", r"창립", r"연말", r"프로모션", r"감사"]),
     ]
     for canon, pats in heuristics:
         for p in pats:
@@ -328,14 +528,12 @@ def _summarize_reason(
                 bag.append(canon)
                 break
 
-    # 중복 제거 + 고정 순서로 정렬
     bag_set = set(bag)
     norm_tags = [t for t in ORDER if t in bag_set]
 
     # -------------------------
-    # 2) 케이스별 "고정 포맷"으로 출력 (통일성 핵심)
+    # (A) 누락 케이스
     # -------------------------
-       # (A) 누락: 유효값 룰만 깔끔히 + (결측/0값 태그가 있으면 같이)
     if display_issue_type == "누락":
         def _yn(v):
             if v is True:
@@ -347,30 +545,25 @@ def _summarize_reason(
         if lookback3_has_value is True:
             core = "누락 · 유효값 존재(이전 3개월 중)"
         elif lookback3_has_value is False:
-            # 3개월 유효값 없을 때만 12개월 표기
-            core = f"누락 · 유효값 존재(이전 3개월 중): {_yn(False)} · 유효값 존재(이전 12개월 중): {_yn(lookback12_has_value)}"
+            core = f"누락 · 유효값 존재(이전 3개월 중): 없음 · 유효값 존재(이전 12개월 중): {_yn(lookback12_has_value)}"
         else:
             core = "누락 · 유효값 존재(이전 3개월 중): 확인필요"
 
-        # 누락 원인이 0인지 결측인지 같이 표기
         miss_tags = [t for t in norm_tags if t in ("결측", "0값")]
         if miss_tags:
             core += f" · 원인:{'/'.join(miss_tags)}"
         return core
 
-
-    # (B) 이상/기타: "전월대비" + "태그(원인들)" + (없으면 reason_kor 한 줄 요약)
+    # -------------------------
+    # (B) 이상/기타 케이스
+    # -------------------------
     parts = []
     mom_txt = _fmt_mom(mom_change_pct)
     if mom_txt:
         parts.append(mom_txt)
 
-    # 누락용 태그(결측/0값)는 이상 케이스에서는 보통 노이즈라 제외 (원하면 유지 가능)
     show_tags = [t for t in norm_tags if t not in ("결측", "0값")]
 
-    # -------------------------
-    # ✅ 2-B) 태그별 영향도 점수 계산 → 큰 순서대로 정렬
-    # -------------------------
     def _safe_abs(x):
         try:
             if x is None or pd.isna(x):
@@ -381,24 +574,20 @@ def _summarize_reason(
 
     tag_score = {t: 0.0 for t in show_tags}
 
-    # 급증/급감: 전월대비 % 절대값이 클수록 영향 큼
     mom_abs = _safe_abs(mom_change_pct)
     if "급증" in tag_score:
         tag_score["급증"] = max(tag_score["급증"], mom_abs)
     if "급감" in tag_score:
         tag_score["급감"] = max(tag_score["급감"], mom_abs)
 
-    # zscore: abs(zscore_12)
     zs = _safe_abs(zscore_12)
     if "zscore" in tag_score:
         tag_score["zscore"] = max(tag_score["zscore"], zs)
 
-    # 패턴이탈: dev_3m (네 파이프라인에서 이미 있음)
     dv = _safe_abs(dev_3m)
     if "패턴이탈" in tag_score:
         tag_score["패턴이탈"] = max(tag_score["패턴이탈"], dv)
 
-    # IF / LOF: 점수 절대값(모델별 스케일 다르면 나중에 보정 가능)
     ifs = _safe_abs(iso_score)
     lofs = _safe_abs(lof_score)
     if "IF" in tag_score:
@@ -406,17 +595,14 @@ def _summarize_reason(
     if "LOF" in tag_score:
         tag_score["LOF"] = max(tag_score["LOF"], lofs)
 
-    # 상관이상: corr_score가 있으면 반영, 없으면 "있다" 수준으로 약한 점수
     cs = _safe_abs(corr_score)
     if "상관이상" in tag_score:
         tag_score["상관이상"] = max(tag_score["상관이상"], cs if cs > 0 else 0.5)
 
-    # 반복/시즌/이벤트: 기본적으로 영향도 낮게(태그만 있으면 맨 뒤로 밀림)
     for low in ("반복", "시즌", "이벤트"):
         if low in tag_score and tag_score[low] == 0.0:
             tag_score[low] = 0.1
 
-    # ✅ 점수 큰 순 → 동점이면 기존 ORDER 순서로 안정 정렬
     order_index = {k: i for i, k in enumerate(ORDER)}
     show_tags_sorted = sorted(
         show_tags,
@@ -426,7 +612,6 @@ def _summarize_reason(
     if show_tags_sorted:
         parts.append("원인 " + "/".join(show_tags_sorted))
 
-    # 태그도 전월대비도 없으면, reason_kor 첫 문장 느낌만 짧게(너무 길면 컷)
     if not parts and rk:
         short = re.split(r"[.\n]", rk)[0].strip()
         if len(short) > 40:
@@ -436,19 +621,13 @@ def _summarize_reason(
     return " · ".join(parts) if parts else ""
 
 
-
-
 # =====================================================
-# ✅ (추가) 전월 금액 / 전월대비 % 계산
-#  - prev_amount: 바로 전월 금액
-#  - mom_change_pct: (이번달-전월)/abs(전월)*100
-#    * 전월이 0이면 None (무한대 방지)
+# ✅ 전월 금액 / 전월대비 % 계산
 # =====================================================
 def add_mom_change(df: pd.DataFrame) -> pd.DataFrame:
     need = {"cost_center", "account_code", "year", "month", "amount"}
     miss = need - set(df.columns)
     if miss:
-        # 기존 로직 깨지지 않게 그냥 반환
         return df
 
     df = df.copy().sort_values(["cost_center", "account_code", "year", "month"])
@@ -465,11 +644,8 @@ def add_mom_change(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             return None
 
-        # ✅ 이번달이 0이면 전월대비 계산/표시 안 함
         if cur_f == 0.0:
             return None
-
-        # ✅ 전월이 0이면 분모 문제라 None
         if prev_f == 0.0:
             return None
 
@@ -480,8 +656,7 @@ def add_mom_change(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # =====================================================
-# ✅ (추가) 직전 3개월/12개월 유효값 존재 여부
-#  - 유효값 = NaN 아님 & 0 아님
+# ✅ 직전 3개월/12개월 유효값 존재 여부
 # =====================================================
 def add_lookback_valid_flags(df: pd.DataFrame) -> pd.DataFrame:
     need = {"cost_center", "account_code", "year", "month", "amount"}
@@ -500,7 +675,6 @@ def add_lookback_valid_flags(df: pd.DataFrame) -> pd.DataFrame:
 
     df["_valid_amt"] = df["amount"].apply(_is_valid)
 
-    # 그룹별로 "현재월 제외"를 위해 shift(1) 후 rolling max
     def _calc_flags(g):
         pv = g["_valid_amt"].shift(1).fillna(False)
         g["lookback3_has_value"] = pv.rolling(3, min_periods=1).max().astype(bool)
@@ -508,10 +682,8 @@ def add_lookback_valid_flags(df: pd.DataFrame) -> pd.DataFrame:
         return g
 
     df = df.groupby(["cost_center", "account_code"], group_keys=False).apply(_calc_flags)
-
     df.drop(columns=["_valid_amt"], inplace=True, errors="ignore")
     return df
-
 
 
 # =====================================================
@@ -1095,12 +1267,16 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
     df_all = compute_corr_pairs(df_all)
     df_all = run_ensemble_outlier(df_all)
     df_all = build_human_explanations(df_all)
+
+    # ✅ 밴드 계산 전에 일단 밴드(기존대로)
     df_all = add_normal_band(df_all)
 
-    # ✅ (추가) 전월대비 계산
+    # ✅ 전월대비/룩백
     df_all = add_mom_change(df_all)
-    # ✅ (추가) 직전 3/12개월 유효값 flag
     df_all = add_lookback_valid_flags(df_all)
+
+    # ✅ 시즌/이벤트 규칙 반영(여기서 issue_type / severity / reason 보정)
+    df_all = apply_season_event_rules(df_all)
 
     wide_df = build_wide_cost_data(df_all)
     cost_data_updated = wide_df.to_dict(orient="records")
@@ -1212,14 +1388,18 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
         lb12 = row.get("lookback12_has_value")
 
         reason_summary = _summarize_reason(
-        reason_kor, reason_tags, display_issue_type,
-        mom_pct, lb3, lb12,
-        zscore_12=row.get("zscore_12"),
-        dev_3m=row.get("dev_3m"),
-        iso_score=row.get("iso_score"),
-        lof_score=row.get("lof_score"),
-        corr_score=row.get("corr_score") or row.get("corr_anom_score"),
-    )
+            reason_kor,
+            reason_tags,
+            display_issue_type,
+            mom_pct,
+            lb3,
+            lb12,
+            zscore_12=row.get("zscore_12"),
+            dev_3m=row.get("dev_3m"),
+            iso_score=row.get("iso_score"),
+            lof_score=row.get("lof_score"),
+            corr_score=row.get("corr_score") or row.get("corr_anom_score"),
+        )
 
         issues.append(
             {
@@ -1234,11 +1414,9 @@ def run_monthly_anomaly_pipeline(upload_df: pd.DataFrame) -> Dict[str, Any]:
                 "cost_nature": str(row.get("cost_nature")),
                 "amount": float(row.get("amount")) if pd.notna(row.get("amount")) else None,
 
-                # ✅ (추가) 전월 값/전월대비%
                 "prev_amount": float(row.get("prev_amount")) if pd.notna(row.get("prev_amount")) else None,
                 "mom_change_pct": float(mom_pct) if (mom_pct is not None and pd.notna(mom_pct)) else None,
 
-                # ✅ (추가) 직전 3/12개월 유효값 flag(원하면 프론트에도 쓸 수 있음)
                 "lookback3_has_value": bool(lb3) if pd.notna(lb3) else None,
                 "lookback12_has_value": bool(lb12) if pd.notna(lb12) else None,
 
@@ -1307,10 +1485,11 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
     df = build_human_explanations(df)
     df = add_normal_band(df)
 
-    # ✅ (추가) 전월대비 계산
     df = add_mom_change(df)
-    # ✅ (추가) 직전 3/12개월 유효값 flag
     df = add_lookback_valid_flags(df)
+
+    # ✅ 시즌/이벤트 규칙 반영
+    df = apply_season_event_rules(df)
 
     df["year_month"] = df["year_month"].astype(str)
     unique_ym = sorted(df["year_month"].unique())
@@ -1409,7 +1588,19 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
         lb3 = row.get("lookback3_has_value")
         lb12 = row.get("lookback12_has_value")
 
-        reason_summary = _summarize_reason(reason_kor, reason_tags, display_issue_type, mom_pct, lb3, lb12)
+        reason_summary = _summarize_reason(
+            reason_kor,
+            reason_tags,
+            display_issue_type,
+            mom_pct,
+            lb3,
+            lb12,
+            zscore_12=row.get("zscore_12"),
+            dev_3m=row.get("dev_3m"),
+            iso_score=row.get("iso_score"),
+            lof_score=row.get("lof_score"),
+            corr_score=row.get("corr_score") or row.get("corr_anom_score"),
+        )
 
         issues.append(
             {
@@ -1424,11 +1615,9 @@ def run_default_cost_center_anomaly(use_cache: bool = True) -> Dict[str, Any]:
                 "cost_nature": str(row.get("cost_nature")),
                 "amount": float(row.get("amount")) if pd.notna(row.get("amount")) else None,
 
-                # ✅ (추가)
                 "prev_amount": float(row.get("prev_amount")) if pd.notna(row.get("prev_amount")) else None,
                 "mom_change_pct": float(mom_pct) if (mom_pct is not None and pd.notna(mom_pct)) else None,
 
-                # ✅ (추가)
                 "lookback3_has_value": bool(lb3) if pd.notna(lb3) else None,
                 "lookback12_has_value": bool(lb12) if pd.notna(lb12) else None,
 
