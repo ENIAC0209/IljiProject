@@ -44,7 +44,12 @@ const KPI_ITEMS = [
 ];
 
 // 🔹 요약 카드에서 '핵심 KPI'로 상단 줄에 강조해서 보여줄 항목
-const KPI_PRIMARY_ITEMS = new Set(["매출액", "매출총이익", "영업이익", "당기순이익"]);
+const KPI_PRIMARY_ITEMS = new Set([
+  "매출액",
+  "매출총이익",
+  "영업이익",
+  "당기순이익",
+]);
 
 // 🔹 각 KPI 위(=항목 바로 아래)에 보여줄 계산식/설명 텍스트
 const KPI_FORMULAS = {
@@ -60,7 +65,12 @@ const KPI_FORMULAS = {
 };
 
 // 🔹 초록색(국내/수출 매출 및 매출원가: 행 하이라이트용)
-const HIGHLIGHT_GREEN_ITEMS = new Set(["국내매출액", "수출매출액", "매출원가", "매출원가(기타)"]);
+const HIGHLIGHT_GREEN_ITEMS = new Set([
+  "국내매출액",
+  "수출매출액",
+  "매출원가",
+  "매출원가(기타)",
+]);
 
 /* ============================
  *  코드 → 내역 매핑 테이블들
@@ -69,90 +79,90 @@ const HIGHLIGHT_GREEN_ITEMS = new Set(["국내매출액", "수출매출액", "�
 
 // 플랜트
 const PLANT_LABELS = {
-  "1010": "경산",
-  "1021": "경주1",
-  "1022": "경주2",
-  "1023": "경주3",
-  "1024": "경주4",
+  1010: "경산",
+  1021: "경주1",
+  1022: "경주2",
+  1023: "경주3",
+  1024: "경주4",
 };
 
 // Prod.계층구조01-2
 const PROD_HIER_LABELS = {
-  "100001": "BACK",
-  "101001": "C/LAMP",
-  "102001": "COWL",
-  "103001": "CTR FLR",
-  "104001": "DASH",
-  "104002": "DASH&COWL",
-  "104003": "DASH&COWL&FR PLR",
-  "105001": "DASH CROSS MBR",
-  "106001": "F/APRON COMPL",
-  "106002": "F/APRON PNL",
-  "106003": "F/APRON MBR",
-  "107001": "FR PLR",
-  "108001": "P/TRAY",
-  "109001": "QTR INR COMPL",
-  "109002": "QTR LWR",
-  "109003": "QTR UPR",
-  "110001": "SUNROOF",
-  "110002": "PANORAMA SUNROOF",
-  "110003": "VISION ROOF",
-  "111001": "RR EXTN",
-  "112001": "RR FLR COMPL",
-  "112002": "PNL-RR FLR",
-  "112003": "MBR-RR FLR",
-  "113001": "RR STEP",
-  "114001": "REINF SIDE OTR COMPL",
-  "114002": "SIDE INR",
-  "114003": "SIDE OTR",
-  "115001": "SIDE SILL",
-  "116001": "STRC 740",
-  "116002": "STRC 741",
-  "116003": "STRC 747",
-  "116004": "STRC 749",
-  "116005": "STRC 760",
-  "116006": "STRC 764",
-  "116007": "STRC 767",
-  "116008": "STRC 768",
-  "116009": "STRC 780",
-  "116010": "STRC 789",
-  "116011": "STRC 793",
-  "116012": "STRC 798",
-  "116013": "STRC 799",
-  "116014": "STRC 801",
-  "116015": "STRC 805",
-  "116016": "STRC 808",
-  "116017": "STRC 810",
-  "116018": "STRC 813",
-  "116019": "STRC 816",
-  "116020": "STRC 840",
-  "116021": "STRC 845",
-  "116022": "STRC 846",
-  "116023": "STRC 859",
-  "116024": "STRC 863",
-  "116025": "STRC 864",
-  "200001": "FR DR",
-  "200002": "RR DR",
-  "201001": "HOOD",
-  "202001": "T/GATE",
-  "203001": "T/LID",
-  "300001": "RAD SUPT",
-  "800001": "BCA",
-  "800002": "BATTERY",
-  "801001": "H/W",
-  "802001": "PARTITION",
-  "803001": "PAD, SEALER",
-  "804001": "TYPE D",
-  "804002": "TYPE E",
-  "804003": "TYPE F",
-  "804004": "TYPE D-HV",
-  "804005": "TYPE E-HV",
-  "810001": "금형",
-  "810002": "설비",
-  "820001": "I/F",
-  "820002": "C/F",
-  "830001": "COIL",
-  "890001": "ETC",
+  100001: "BACK",
+  101001: "C/LAMP",
+  102001: "COWL",
+  103001: "CTR FLR",
+  104001: "DASH",
+  104002: "DASH&COWL",
+  104003: "DASH&COWL&FR PLR",
+  105001: "DASH CROSS MBR",
+  106001: "F/APRON COMPL",
+  106002: "F/APRON PNL",
+  106003: "F/APRON MBR",
+  107001: "FR PLR",
+  108001: "P/TRAY",
+  109001: "QTR INR COMPL",
+  109002: "QTR LWR",
+  109003: "QTR UPR",
+  110001: "SUNROOF",
+  110002: "PANORAMA SUNROOF",
+  110003: "VISION ROOF",
+  111001: "RR EXTN",
+  112001: "RR FLR COMPL",
+  112002: "PNL-RR FLR",
+  112003: "MBR-RR FLR",
+  113001: "RR STEP",
+  114001: "REINF SIDE OTR COMPL",
+  114002: "SIDE INR",
+  114003: "SIDE OTR",
+  115001: "SIDE SILL",
+  116001: "STRC 740",
+  116002: "STRC 741",
+  116003: "STRC 747",
+  116004: "STRC 749",
+  116005: "STRC 760",
+  116006: "STRC 764",
+  116007: "STRC 767",
+  116008: "STRC 768",
+  116009: "STRC 780",
+  116010: "STRC 789",
+  116011: "STRC 793",
+  116012: "STRC 798",
+  116013: "STRC 799",
+  116014: "STRC 801",
+  116015: "STRC 805",
+  116016: "STRC 808",
+  116017: "STRC 810",
+  116018: "STRC 813",
+  116019: "STRC 816",
+  116020: "STRC 840",
+  116021: "STRC 845",
+  116022: "STRC 846",
+  116023: "STRC 859",
+  116024: "STRC 863",
+  116025: "STRC 864",
+  200001: "FR DR",
+  200002: "RR DR",
+  201001: "HOOD",
+  202001: "T/GATE",
+  203001: "T/LID",
+  300001: "RAD SUPT",
+  800001: "BCA",
+  800002: "BATTERY",
+  801001: "H/W",
+  802001: "PARTITION",
+  803001: "PAD, SEALER",
+  804001: "TYPE D",
+  804002: "TYPE E",
+  804003: "TYPE F",
+  804004: "TYPE D-HV",
+  804005: "TYPE E-HV",
+  810001: "금형",
+  810002: "설비",
+  820001: "I/F",
+  820002: "C/F",
+  830001: "COIL",
+  890001: "ETC",
   "900S11": "공구류",
   "900S12": "벨트류",
   "900S13": "베어링류",
@@ -192,52 +202,52 @@ const PROD_HIER_LABELS = {
 
 // 평가클래스
 const VAL_CLASS_LABELS = {
-  "3000": "원재료",
-  "3010": "부재료-1차사직거래품",
-  "3011": "부재료-2차사반제품",
-  "3012": "부재료-핫스템핑",
-  "3013": "부재료-HMC사급품",
-  "3014": "부재료-H/W",
-  "3015": "부재료-PAD",
-  "3016": "부재료-구조용접착제",
-  "3100": "상품(부품)",
-  "3110": "상품(투자개발)",
-  "7900": "반제품",
-  "7920": "완제품",
+  3000: "원재료",
+  3010: "부재료-1차사직거래품",
+  3011: "부재료-2차사반제품",
+  3012: "부재료-핫스템핑",
+  3013: "부재료-HMC사급품",
+  3014: "부재료-H/W",
+  3015: "부재료-PAD",
+  3016: "부재료-구조용접착제",
+  3100: "상품(부품)",
+  3110: "상품(투자개발)",
+  7900: "반제품",
+  7920: "완제품",
 };
 
 // 손익센터
 const PROFIT_CENTER_LABELS = {
-  "1010": "본사공통",
-  "1011": "본사1",
-  "1012": "본사2",
-  "1020": "경주공통",
-  "1021": "경주1",
-  "1022": "경주2",
-  "1023": "경주3",
-  "1024": "경주4",
+  1010: "본사공통",
+  1011: "본사1",
+  1012: "본사2",
+  1020: "경주공통",
+  1021: "경주1",
+  1022: "경주2",
+  1023: "경주3",
+  1024: "경주4",
 };
 
 // 유통경로
 const CHANNEL_LABELS = {
-  "10": "내수 (10,20)",
-  "20": "로컬",
-  "30": "직수출",
-  "90": "사급 (90,91)",
-  "91": "비사급",
-  "92": "스크랩",
+  10: "내수 (10,20)",
+  20: "로컬",
+  30: "직수출",
+  90: "사급 (90,91)",
+  91: "비사급",
+  92: "스크랩",
 };
 
 // 기타매출 유형
 const OTHER_SALES_TYPE_LABELS = {
-  "1": "OEM",
-  "2": "시작차",
-  "3": "부산물",
-  "4": "수수료",
-  "5": "태양광",
-  "6": "리비안",
-  "7": "NX5",
-  "8": "NX5a",
+  1: "OEM",
+  2: "시작차",
+  3: "부산물",
+  4: "수수료",
+  5: "태양광",
+  6: "리비안",
+  7: "NX5",
+  8: "NX5a",
   A: "폐기(배부)",
   B: "실사조정(배부)",
   C: "유상사급(배부)",
@@ -251,9 +261,9 @@ const OTHER_SALES_TYPE_LABELS = {
 
 // 레코드 유형
 const RECORD_TYPE_LABELS = {
-  "1": "기타매출계획",
-  "2": "수출제비용 계획",
-  "3": "운송비계획",
+  1: "기타매출계획",
+  2: "수출제비용 계획",
+  3: "운송비계획",
   A: "수주",
   B: "FI에서 직접전기",
   C: "오더/프로젝트 정산",
@@ -270,7 +280,7 @@ const RECORD_TYPE_LABELS = {
 
 // 판매문서 유형 (긴 목록 그대로 매핑)
 const SD_DOC_TYPE_LABELS = {
-  "1": "고객 독립 소요량",
+  1: "고객 독립 소요량",
   AA: "판촉 오더",
   AD1: "A&D 계약",
   AD2: "A&D 차변 메모 요청",
@@ -497,11 +507,8 @@ const LABEL_MAPS = {
   기타매출유형: OTHER_SALES_TYPE_LABELS,
   레코드유형: RECORD_TYPE_LABELS,
 };
-
 function PlReportTab({
   selectedYm,
-  plDetailTab = "basic",
-  setPlDetailTab,
   cardStyle = {
     backgroundColor: "#ffffff",
     borderRadius: 0,
@@ -531,6 +538,13 @@ function PlReportTab({
     boxShadow: "0 4px 8px rgba(15,23,42,0.03)",
   };
 
+  // ✅ 탭이 패널 위에 “꽂힌” 느낌(오버랩) 강화용
+  const panelWithTabOverlapStyle = {
+    ...panelStyle,
+    position: "relative",
+    paddingTop: 14, // 탭이 얹히는 공간(10~16 조절)
+  };
+
   const kpiPrimaryCardStyle = {
     ...panelStyle,
     padding: 12,
@@ -542,39 +556,6 @@ function PlReportTab({
     ...panelStyle,
     padding: 12,
     backgroundColor: "#ffffff",
-  };
-
-  // =========================
-  // ✅ 버튼 스타일 (각진)
-  // =========================
-  const btnBase = {
-    height: 28,
-    padding: "0 10px",
-    borderRadius: 8,
-    border: "1px solid #D1D5DB",
-    backgroundColor: "#ffffff",
-    color: "#111827",
-    fontSize: 12,
-    fontWeight: 700,
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-    boxShadow: "0 1px 2px rgba(15,23,42,0.06)",
-  };
-
-  const btnActive = {
-    border: "1px solid #1D4ED8",
-    backgroundColor: "#2563EB",
-    color: "#ffffff",
-    boxShadow: "0 2px 6px rgba(37,99,235,0.25)",
-  };
-
-  const exportBtnStyle = {
-    ...btnBase,
-    padding: "0 12px",
-    fontWeight: 800,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
   };
 
   // -----------------------------
@@ -612,7 +593,9 @@ function PlReportTab({
       const res = await fetch(`/api/pl-report?${params}`);
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        const msg = data.error || `PL Report 조회 중 오류가 발생했습니다. (HTTP ${res.status})`;
+        const msg =
+          data.error ||
+          `PL Report 조회 중 오류가 발생했습니다. (HTTP ${res.status})`;
         throw new Error(msg);
       }
       const data = await res.json();
@@ -629,8 +612,14 @@ function PlReportTab({
   useEffect(() => {
     if (!selectedYear || !selectedMonth) return;
     fetchData(selectedYear, selectedMonth);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedYear, selectedMonth]);
+
+  // ✅ 탭/조건 바뀌면 스크롤 상단으로
+  useEffect(() => {
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollTop = 0;
+    }
+  }, [viewMode, selectedCond]);
 
   const formatNumber = (v) => {
     if (v === null || v === undefined || v === "") return "-";
@@ -640,7 +629,8 @@ function PlReportTab({
   };
 
   if (loading) return <p>불러오는 중...</p>;
-  if (error && rows.length === 0) return <p style={{ color: "red" }}>{error}</p>;
+  if (error && rows.length === 0)
+    return <p style={{ color: "red" }}>{error}</p>;
   if (rows.length === 0) return <p>데이터가 없습니다.</p>;
 
   // ✅ 선택된 조건에 따라 컬럼 필터링 + "조건_전체"를 항목 바로 뒤로 이동
@@ -650,7 +640,9 @@ function PlReportTab({
     const others = cols.filter((c) => !base.includes(c));
 
     if (selectedCond === "전체") {
-      const totalCols = others.filter((c) => c === "전체" || c.startsWith("전체_"));
+      const totalCols = others.filter(
+        (c) => c === "전체" || c.startsWith("전체_")
+      );
       return [...base, ...totalCols];
     }
 
@@ -661,24 +653,33 @@ function PlReportTab({
     const hasTotal = filtered.includes(totalCol);
     const withoutTotal = filtered.filter((c) => c !== totalCol);
 
-    const orderedForCond = hasTotal ? [totalCol, ...withoutTotal] : withoutTotal;
+    const orderedForCond = hasTotal
+      ? [totalCol, ...withoutTotal]
+      : withoutTotal;
     return [...base, ...orderedForCond];
   })();
 
-  const summaryColName = selectedCond === "전체" ? "전체" : `${selectedCond}_전체`;
+  const summaryColName =
+    selectedCond === "전체" ? "전체" : `${selectedCond}_전체`;
 
   const kpiSummary = KPI_ITEMS.map((name) => {
     const row = rows.find((r) => (r["항목"] || "").trim() === name) || null;
     const raw =
-      row && summaryColName && Object.prototype.hasOwnProperty.call(row, summaryColName)
+      row &&
+      summaryColName &&
+      Object.prototype.hasOwnProperty.call(row, summaryColName)
         ? row[summaryColName]
         : null;
 
     return { name, value: raw, valueFormatted: formatNumber(raw) };
   });
 
-  const primarySummary = kpiSummary.filter((item) => KPI_PRIMARY_ITEMS.has(item.name));
-  const secondarySummary = kpiSummary.filter((item) => !KPI_PRIMARY_ITEMS.has(item.name));
+  const primarySummary = kpiSummary.filter((item) =>
+    KPI_PRIMARY_ITEMS.has(item.name)
+  );
+  const secondarySummary = kpiSummary.filter(
+    (item) => !KPI_PRIMARY_ITEMS.has(item.name)
+  );
 
   const getDisplayColName = (col) => {
     if (col === "번호" || col === "항목" || col === "전체") return col;
@@ -690,7 +691,8 @@ function PlReportTab({
     const code = col.slice(idx + 1);
 
     const map = LABEL_MAPS[cond];
-    if (map && Object.prototype.hasOwnProperty.call(map, code) && map[code]) return map[code];
+    if (map && Object.prototype.hasOwnProperty.call(map, code) && map[code])
+      return map[code];
 
     return code;
   };
@@ -709,84 +711,24 @@ function PlReportTab({
 
     const header = orderedColumns.map((col) => getDisplayColName(col));
     const data = rows.map((row) =>
-      orderedColumns.map((col) => (row[col] === null || row[col] === undefined ? "" : row[col]))
+      orderedColumns.map((col) =>
+        row[col] === null || row[col] === undefined ? "" : row[col]
+      )
     );
 
     const ws = XLSX.utils.aoa_to_sheet([header, ...data]);
-    const range = XLSX.utils.decode_range(ws["!ref"]);
-
-    for (let C = range.s.c; C <= range.e.c; C += 1) {
-      const cellRef = XLSX.utils.encode_cell({ r: 0, c: C });
-      const cell = ws[cellRef] || {};
-      cell.s = {
-        font: { bold: true, color: { rgb: "FF111827" } },
-        alignment: {
-          vertical: "center",
-          horizontal:
-            orderedColumns[C] === "번호" || orderedColumns[C] === "항목" ? "left" : "right",
-        },
-        fill: { fgColor: { rgb: "FFF3F4F6" } },
-        border: {
-          top: { style: "thin", color: { rgb: "FFE5E7EB" } },
-          bottom: { style: "thin", color: { rgb: "FFE5E7EB" } },
-          left: { style: "thin", color: { rgb: "FFE5E7EB" } },
-          right: { style: "thin", color: { rgb: "FFE5E7EB" } },
-        },
-      };
-      ws[cellRef] = cell;
-    }
-
-    for (let R = range.s.r + 1; R <= range.e.r; R += 1) {
-      const dataRowIndex = R - 1;
-      const itemName = rows[dataRowIndex]["항목"];
-      const bg = getRowBackgroundColor(itemName);
-
-      let fillColor = null;
-      if (bg === "#FFF9C4") fillColor = "FFFFF9C4";
-      if (bg === "#E8F5E9") fillColor = "FFE8F5E9";
-
-      for (let C = range.s.c; C <= range.e.c; C += 1) {
-        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
-        const cell = ws[cellRef] || { t: "s", v: "" };
-
-        const align =
-          orderedColumns[C] === "번호" || orderedColumns[C] === "항목" ? "left" : "right";
-
-        cell.s = {
-          alignment: { vertical: "center", horizontal: align },
-          border: {
-            top: { style: "thin", color: { rgb: "FFF3F4F6" } },
-            bottom: { style: "thin", color: { rgb: "FFF3F4F6" } },
-            left: { style: "thin", color: { rgb: "FFF3F4F6" } },
-            right: { style: "thin", color: { rgb: "FFF3F4F6" } },
-          },
-          ...(fillColor ? { fill: { fgColor: { rgb: fillColor } } } : {}),
-        };
-
-        ws[cellRef] = cell;
-      }
-    }
-
-    ws["!cols"] = orderedColumns.map((col) => {
-      if (col === "번호") return { wch: 6 };
-      if (col === "항목") return { wch: 26 };
-      return { wch: 18 };
-    });
-
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "PL Report");
 
-    const ym = selectedYmLabel && selectedYmLabel !== "-" ? selectedYmLabel : "unknown";
+    const ym =
+      selectedYmLabel && selectedYmLabel !== "-" ? selectedYmLabel : "unknown";
     const condLabel = selectedCond || "전체";
-    const filename = `PL_Report_${ym}_${condLabel}.xlsx`;
-
-    XLSX.writeFile(wb, filename);
+    XLSX.writeFile(wb, `PL_Report_${ym}_${condLabel}.xlsx`);
   };
 
   return (
     <div
       style={{
-        padding: "20px",
         width: "100%",
         maxWidth: "100%",
         boxSizing: "border-box",
@@ -795,49 +737,195 @@ function PlReportTab({
         gap: "12px",
       }}
     >
-      {/* ✅ 제목 + EXPORT + 표/그래프 버튼 + 조건버튼을 “한 줄”로 고정 */}
+      {/* ✅ 상단: 라벨 탭(표/그래프) + EXPORT + 라벨 탭(조건) */}
       <div
         style={{
           display: "flex",
-          alignItems: "center",
-          gap: 12,
+          alignItems: "flex-end",
+          gap: 10,
           width: "100%",
           flexWrap: "nowrap",
           minWidth: 0,
+
+          position: "relative",
+          zIndex: 5,
+          marginBottom: -13,
         }}
       >
-        {/* 좌측: 제목 + EXPORT + 표/그래프 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <h2 style={{ margin: 0, lineHeight: 1.2 }}>P&amp;L Report</h2>
+        {/* ✅ 좌/우 탭을 같은 트레이 스타일로 맞추기 */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 6,
+            flexShrink: 0,
+            paddingBottom: 2, // ✅ 좌측 탭 베이스라인 기준
+          }}
+        >
+          {[
+            { key: "table", label: "표" },
+            { key: "graph", label: "그래프" },
+          ].map((t) => {
+            const active = viewMode === t.key;
+            const tabStyle = {
+              position: "relative",
+              height: 34,
+              padding: "0 12px",
+              borderRadius: "12px 12px 4px 4px",
+              border: "1px solid #E5E7EB",
 
-          <button
-            type="button"
-            onClick={exportToExcel}
-            style={exportBtnStyle}
-            title="현재 화면(선택 조건/컬럼 기준)으로 엑셀 다운로드"
-          >
-            <span style={{ fontSize: 12, lineHeight: 1 }}>⬇</span>
-            EXPORT
-          </button>
+              // ✅ 선택 여부와 관계없이 패널과 닿는 면은 흰색(끊김 방지)
+              borderBottom: "1px solid #ffffff",
 
-          {/* ✅ 표/그래프 보기 토글 */}
-          <button
-            type="button"
-            onClick={() => setViewMode("table")}
-            style={{ ...btnBase, ...(viewMode === "table" ? btnActive : null) }}
-          >
-            표
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("graph")}
-            style={{ ...btnBase, ...(viewMode === "graph" ? btnActive : null) }}
-          >
-            그래프
-          </button>
+              background: active ? "#ffffff" : "#F9FAFB",
+              color: active ? "#111827" : "#6B7280",
+              fontSize: 12,
+              fontWeight: 900,
+              cursor: "pointer",
+
+              // ✅ active는 살짝 더 강조, inactive는 약하게(원하면 none으로)
+              boxShadow: active ? "0 -1px 4px rgba(15,23,42,0.08)" : "none",
+
+              // ✅ 선택 안 돼도 패널 쪽으로 내려서 “붙어있는” 느낌 유지
+              transform: "translateY(2px)",
+
+              transition: "all 120ms ease",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              whiteSpace: "nowrap",
+            };
+
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setViewMode(t.key)}
+                style={tabStyle}
+                aria-pressed={active}
+                title={t.label}
+              >
+                <span
+                  aria-hidden="true"
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: 99,
+                    background: active ? "#2563EB" : "#CBD5E1",
+                    boxShadow: active
+                      ? "0 0 0 3px rgba(37,99,235,0.18)"
+                      : "none",
+                  }}
+                />
+                {t.label}
+              </button>
+            );
+          })}
         </div>
+        {/*export버튼*/}
+        <button
+          type="button"
+          onClick={exportToExcel}
+          disabled={!rows || rows.length === 0}
+          title="export table to xlsx"
+          style={{
+            /* 위치/여백 */
+            height: 28,
+            padding: "0 12px",
+            marginBottom: 8, // ✅ 아래랑 더 여유
 
-        {/* 우측: 조건 버튼 (한 줄, 넘치면 가로 스크롤) */}
+            /* 컬러 */
+            background: "#EEF2FF", // 은은한 인디고 배경
+            border: "1px solid #C7D2FE",
+            borderRadius: 8,
+
+            /* 타이포 */
+            fontFamily:
+              "'Inter', 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.02em",
+            textTransform: "lowercase",
+            color: "#1E3A8A",
+
+            /* 정렬 */
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            whiteSpace: "nowrap",
+
+            /* 인터랙션 */
+            cursor: !rows || rows.length === 0 ? "not-allowed" : "pointer",
+            opacity: !rows || rows.length === 0 ? 0.45 : 1,
+            boxShadow: "0 1px 0 rgba(15,23,42,0.04)",
+            transition:
+              "background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease",
+          }}
+          onMouseEnter={(e) => {
+            if (e.currentTarget.disabled) return;
+            e.currentTarget.style.background = "#E0E7FF";
+            e.currentTarget.style.borderColor = "#A5B4FC";
+            e.currentTarget.style.boxShadow = "0 4px 10px rgba(30,58,138,0.18)";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "#EEF2FF";
+            e.currentTarget.style.borderColor = "#C7D2FE";
+            e.currentTarget.style.boxShadow = "0 1px 0 rgba(15,23,42,0.04)";
+            e.currentTarget.style.transform = "none";
+          }}
+          onMouseDown={(e) => {
+            if (e.currentTarget.disabled) return;
+            e.currentTarget.style.transform = "translateY(1px)";
+          }}
+        >
+          {/* 아이콘 */}
+          <svg
+            width="13"
+            height="13"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M12 3v10"
+              stroke="#1E3A8A"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+            <path
+              d="M8 11l4 4 4-4"
+              stroke="#1E3A8A"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M4 20h16"
+              stroke="#1E3A8A"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+
+          <span>Export</span>
+
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 600,
+              padding: "2px 6px",
+              borderRadius: 6,
+              background: "#FFFFFF",
+              color: "#1E3A8A",
+              border: "1px solid #C7D2FE",
+              lineHeight: 1,
+            }}
+          >
+            xlsx
+          </span>
+        </button>
+
+        {/* ✅ 우측: 조건 탭도 “같은 트레이” 기준으로 맞추기 */}
         <div
           style={{
             marginLeft: "auto",
@@ -850,24 +938,64 @@ function PlReportTab({
           <div
             style={{
               display: "flex",
-              gap: 8,
+              alignItems: "flex-end", // ✅ 버튼 바닥 정렬 고정
+              gap: 6,
               flexWrap: "nowrap",
               overflowX: "auto",
               overflowY: "hidden",
-              paddingBottom: 2,
+              paddingLeft: 4,
+              paddingBottom: 0, // ✅ 여기서는 0 (바깥에서 2 줬으니 중복 제거)
               scrollbarWidth: "thin",
               WebkitOverflowScrolling: "touch",
             }}
           >
             {CONDITION_KEYS.map((cond) => {
               const active = selectedCond === cond;
+
+              const tabStyle = {
+                position: "relative",
+                height: 34,
+                padding: "0 12px",
+                borderRadius: "12px 12px 4px 4px",
+                border: "1px solid #E5E7EB",
+                borderBottom: active
+                  ? "1px solid #ffffff"
+                  : "1px solid #E5E7EB",
+                background: active ? "#ffffff" : "#F9FAFB",
+                color: active ? "#111827" : "#6B7280",
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: "pointer",
+                boxShadow: active ? "0 -1px 4px rgba(15,23,42,0.06)" : "none", // ✅ 아래 그림자 제거
+                transform: active ? "translateY(2px)" : "translateY(1px)",
+                transition: "all 120ms ease",
+                whiteSpace: "nowrap",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+              };
+
               return (
                 <button
                   key={cond}
                   type="button"
                   onClick={() => setSelectedCond(cond)}
-                  style={{ ...btnBase, ...(active ? btnActive : null) }}
+                  style={tabStyle}
+                  aria-pressed={active}
+                  title={cond}
                 >
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 99,
+                      background: active ? "#10B981" : "#CBD5E1",
+                      boxShadow: active
+                        ? "0 0 0 3px rgba(16,185,129,0.18)"
+                        : "none",
+                    }}
+                  />
                   {cond}
                 </button>
               );
@@ -879,7 +1007,6 @@ function PlReportTab({
       {/* ✅ 변경: 그래프 보기 모드에서는 이 요약(노란 카드) 영역이 뜨면 안 됨 */}
       {viewMode === "table" && (
         <>
-          {/* 대표 경영지표 요약 카드 영역 */}
           <div
             style={{
               ...panelStyle,
@@ -895,17 +1022,39 @@ function PlReportTab({
                 {selectedCond === "전체" ? "전체" : `${selectedCond} - 전체`}
               </span>
               )&nbsp;| 조회 기간:&nbsp;
-              <span style={{ fontWeight: 700, color: "#111827" }}>{selectedYmLabel}</span>
+              <span style={{ fontWeight: 700, color: "#111827" }}>
+                {selectedYmLabel}
+              </span>
             </div>
 
             {/* 1줄차: 핵심 KPI */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                gap: 12,
+              }}
+            >
               {primarySummary.map((item) => {
                 const formula = KPI_FORMULAS[item.name] || "";
                 return (
                   <div key={item.name} style={kpiPrimaryCardStyle}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: 8,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 700,
+                          color: "#374151",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {item.name}
                       </div>
                       <div
@@ -946,13 +1095,33 @@ function PlReportTab({
             </div>
 
             {/* 2줄차: 나머지 KPI */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 12 }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                gap: 12,
+              }}
+            >
               {secondarySummary.map((item) => {
                 const formula = KPI_FORMULAS[item.name] || "";
                 return (
                   <div key={item.name} style={kpiCardStyle}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 6 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: "#4b5563", whiteSpace: "nowrap" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        gap: 6,
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          color: "#4b5563",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
                         {item.name}
                       </div>
                       <div
@@ -999,14 +1168,26 @@ function PlReportTab({
       {viewMode === "table" ? (
         <div
           style={{
-            ...panelStyle,
+            ...panelWithTabOverlapStyle, // ✅ 오버랩용 패널
             padding: "12px 12px 10px",
             width: "100%",
             maxWidth: "100%",
             overflow: "hidden",
           }}
         >
-          {/* ▼▼ 표 전용 스크롤 영역 (세로+가로) ▼▼ */}
+          {/* ✅ 패널 상단에 얇은 흰 스트립: 탭 아래로 패널 선이 지나가는 느낌 제거 */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 14,
+              background: "#ffffff",
+            }}
+          />
+
           <div
             ref={mainScrollRef}
             style={{
@@ -1015,6 +1196,8 @@ function PlReportTab({
               maxHeight: "68vh",
               overflowX: "auto",
               overflowY: "auto",
+              position: "relative",
+              zIndex: 1,
             }}
           >
             <table
@@ -1045,7 +1228,8 @@ function PlReportTab({
                         position: "sticky",
                         top: 0,
                         background: "#f9fafb",
-                        textAlign: col === "번호" || col === "항목" ? "left" : "right",
+                        textAlign:
+                          col === "번호" || col === "항목" ? "left" : "right",
                         zIndex: 2,
                         overflow: "hidden",
                         textOverflow: "ellipsis",
@@ -1069,7 +1253,9 @@ function PlReportTab({
                       {orderedColumns.map((col) => {
                         const raw = row[col];
                         const isTextCol = col === "번호" || col === "항목";
-                        const display = isTextCol ? raw ?? "" : formatNumber(raw);
+                        const display = isTextCol
+                          ? raw ?? ""
+                          : formatNumber(raw);
 
                         return (
                           <td
@@ -1094,16 +1280,31 @@ function PlReportTab({
               </tbody>
             </table>
           </div>
-          {/* ▲▲ 표 전용 스크롤 영역 끝 ▲▲ */}
         </div>
       ) : (
-        <PlReportGraphTab
-          rows={rows}
-          selectedCond={selectedCond}
-          selectedYear={selectedYear}
-          selectedMonth={selectedMonth}
-          showCondBar={false}
-        />
+        <div style={panelWithTabOverlapStyle}>
+          {/* 그래프도 같은 패널 안에서 “탭이 꽂힌” 느낌 유지 */}
+          <div
+            aria-hidden="true"
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: 0,
+              height: 14,
+              background: "#ffffff",
+            }}
+          />
+          <div style={{ position: "relative", zIndex: 1, padding: 12 }}>
+            <PlReportGraphTab
+              rows={rows}
+              selectedCond={selectedCond}
+              selectedYear={selectedYear}
+              selectedMonth={selectedMonth}
+              showCondBar={false}
+            />
+          </div>
+        </div>
       )}
     </div>
   );

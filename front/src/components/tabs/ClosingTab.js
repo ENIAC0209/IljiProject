@@ -615,15 +615,16 @@ export default function ClosingTab({
     zIndex: 2,
     backgroundColor: "#f9fafb",
     borderBottom: "1px solid #e5e7eb",
+    boxSizing: "border-box", // ✅ 추가
   };
 
-  // ✅ (추가) 이슈 리스트 표: 모든 셀 한 줄 고정 + 말줄임
   const tdNoWrap = {
     padding: "3px 6px",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
     verticalAlign: "middle",
+    boxSizing: "border-box", // ✅ 추가
   };
 
   return (
@@ -898,10 +899,10 @@ export default function ClosingTab({
                   <col style={{ width: 110 }} /> {/* 코스트센터 (120→110) */}
                   <col style={{ width: 64 }} /> {/* 계정코드 (70→64) */}
                   <col style={{ width: 120 }} /> {/* 계정명 (140→120) */}
-                  <col style={{ width: 70 }} /> {/* 분류 (84→70) */}
-                  <col style={{ width: 86 }} /> {/* 금액 (90→86) */}
-                  <col style={{ width: 260 }} /> {/* ✅ 사유(요약) (170→260) */}
-                  <col style={{ width: 50 }} /> {/* 확인 (54→50) */}
+                  <col style={{ width: 96 }} /> {/* 분류 (84→70) */}
+                  <col style={{ width: 80 }} /> {/* 금액 (90→86) */}
+                  <col style={{ width: 220 }} /> {/* ✅ 사유(요약) (170→260) */}
+                  <col style={{ width: 54 }} /> {/* 확인 (54→50) */}
                 </colgroup>
 
                 <thead>
@@ -1465,9 +1466,12 @@ export default function ClosingTab({
           >
             <table
               style={{
-                width: "100%",
+                width: 856, // ✅ 고정
+                minWidth: 856, // ✅ 고정
+                maxWidth: 856, // ✅ 고정
                 borderCollapse: "collapse",
                 fontSize: 10,
+                tableLayout: "fixed",
               }}
             >
               <thead>
