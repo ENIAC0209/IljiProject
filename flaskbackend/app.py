@@ -83,6 +83,7 @@ CACHE_DIR = BASE_DIR / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 COST_MONTHLY_DIR = BASE_DIR / "centercost_data"
+BACKDATA_EXCEL_PATH = BASE_DIR / "3back_data_with_fake11_v2.xlsx"
 
 REPORT_DATA_DIR = BASE_DIR / "report_data"
 REPORT_DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1082,6 +1083,63 @@ def load_cost_center_data(use_cache: bool = True) -> pd.DataFrame:
     return df_wide
 
 
+def load_pl_backdata():
+    if not BACKDATA_EXCEL_PATH.exists():
+        raise FileNotFoundError(f"Backdata file not found: {BACKDATA_EXCEL_PATH}")
+
+    xls = pd.ExcelFile(str(BACKDATA_EXCEL_PATH))
+    print("[load_pl_backdata] sheet names:", xls.sheet_names)
+
+    back_sheet_name = None
+    for name in xls.sheet_names:
+        if re.search(r"back\s*data", name, re.IGNORECASE):
+            back_sheet_name = name
+            break
+    if back_sheet_name is None:
+        back_sheet_name = xls.sheet_names[0]
+
+    df_back = pd.read_excel(xls, sheet_name=back_sheet_name)
+    df_back = df_back.replace({np.nan: None})
+    back_records = df_back.to_dict(orient="records")
+
+    codeNameMap: Dict[str, str] = {}
+    mapping_sheet_name = None
+    for name in xls.sheet_names:
+        if re.search(r"코드분류표|code.?map|코드맵", name, re.IGNORECASE):
+            mapping_sheet_name = name
+            break
+
+    if mapping_sheet_name is not None:
+        df_map = pd.read_excel(xls, sheet_name=mapping_sheet_name)
+        for _, row in df_map.iterrows():
+            rawCode = (
+                (row.get("코드") if "코드" in row else None)
+                or (row.get("계정코드") if "계정코드" in row else None)
+                or (row.get("코스트센터") if "코스트센터" in row else None)
+                or (row.get("코드값") if "코드값" in row else None)
+                or (row.get("Code") if "Code" in row else None)
+            )
+            rawName = (
+                (row.get("내역") if "내역" in row else None)
+                or (row.get("계정명") if "계정명" in row else None)
+                or (row.get("코스트센터명") if "코스트센터명" in row else None)
+                or (row.get("Name") if "Name" in row else None)
+                or (row.get("설명") if "설명" in row else None)
+            )
+
+            if rawCode is None or rawName is None:
+                continue
+            if pd.isna(rawCode) or pd.isna(rawName):
+                continue
+
+            code = str(rawCode).strip()
+            name = str(rawName).strip()
+            if code:
+                codeNameMap[code] = name
+
+    return back_records, codeNameMap
+
+
 @app.route("/api/init-data", methods=["GET"])
 def init_data():
     try:
@@ -1091,9 +1149,12 @@ def init_data():
         print("[init-data] costData load error:", e)
         costData = []
 
-
-    backData = []
-    codeNameMap = {}
+    try:
+        backData, codeNameMap = load_pl_backdata()
+    except Exception as e:
+        print("[init-data] backData load error:", e)
+        backData = []
+        codeNameMap = {}
 
     try:
         advancedMap = load_advanced_class_map(use_cache=True)
@@ -1800,7 +1861,10 @@ def get_pl_report():
             except Exception as e:
                 print("[/api/pl-report] cache load error, 재계산:", e)
 
-        df = generate_pl_report_df()
+        try:
+            df = generate_pl_report_df(back_data_file=str(BACKDATA_EXCEL_PATH))
+        except TypeError:
+            df = generate_pl_report_df()
 
         try:
             df.to_pickle(cache_path)
