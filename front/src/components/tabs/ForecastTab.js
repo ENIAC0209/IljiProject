@@ -217,7 +217,9 @@ function ForecastTab({ cardStyle }) {
       }
 
       if (!res.ok || data.ok === false) {
-        throw new Error(data.error || `데이터 업데이트/재학습 시작 실패 (HTTP ${res.status})`);
+        throw new Error(
+          data.error || `데이터 업데이트/재학습 시작 실패 (HTTP ${res.status})`
+        );
       }
 
       // ✅ started / already_running 모두 ok: true로 내려오므로 폴링 시작
@@ -280,7 +282,9 @@ function ForecastTab({ cardStyle }) {
       const promises = [
         callForecastApi(months, {}),
         callForecastApi(months, scenarioMap),
-        ...activeDrivers.map((d) => callForecastApi(months, { [d.key]: d.rate })),
+        ...activeDrivers.map((d) =>
+          callForecastApi(months, { [d.key]: d.rate })
+        ),
       ];
 
       const responses = await Promise.all(promises);
@@ -293,12 +297,16 @@ function ForecastTab({ cardStyle }) {
 
       // Impact Ranking (마지막 달 기준)
       const baseLastOp =
-        basePreds.length > 0 ? basePreds[basePreds.length - 1]["영업이익"] || 0 : 0;
+        basePreds.length > 0
+          ? basePreds[basePreds.length - 1]["영업이익"] || 0
+          : 0;
 
       const driverImpacts = activeDrivers.map((drv, idx) => {
         const drvPreds = perDriverRes[idx]?.predictions || [];
         const drvLastOp =
-          drvPreds.length > 0 ? drvPreds[drvPreds.length - 1]["영업이익"] || 0 : 0;
+          drvPreds.length > 0
+            ? drvPreds[drvPreds.length - 1]["영업이익"] || 0
+            : 0;
 
         const diff = drvLastOp - baseLastOp;
         const rate = baseLastOp ? (diff / baseLastOp) * 100 : 0;
@@ -378,10 +386,15 @@ function ForecastTab({ cardStyle }) {
   }, [result]);
 
   const kpiSummary = useMemo(() => {
-    if (!result || !result.scenarioPredictions?.length || !result.basePredictions?.length)
+    if (
+      !result ||
+      !result.scenarioPredictions?.length ||
+      !result.basePredictions?.length
+    )
       return null;
 
-    const scenLast = result.scenarioPredictions[result.scenarioPredictions.length - 1];
+    const scenLast =
+      result.scenarioPredictions[result.scenarioPredictions.length - 1];
     const baseLast = result.basePredictions[result.basePredictions.length - 1];
 
     const op = scenLast["영업이익"] || 0;
@@ -519,18 +532,30 @@ function ForecastTab({ cardStyle }) {
 
       {/* 입력 카드 */}
       <section style={baseCardStyle}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, marginBottom: 6, color: BRAND_DARK }}>
-          AI 기반 미래 결산 예측 (주요 비용 시나리오)
-        </h2>
         <p style={{ fontSize: 13, color: "#6b7280", marginBottom: 16 }}>
-          전력비 · 급여(전체) · 원재료비 · 부재료비(전체) · 판관비(전체) 등 주요 비용 항목{" "}
-          <span style={{ fontWeight: 600 }}>증감률 시나리오</span>를 입력하면,
-          향후 n개월간의 영업이익 / 매출총이익 / 당기순이익 / 판관비를 예측합니다.
+          전력비 · 급여(전체) · 원재료비 · 부재료비(전체) · 판관비(전체) 등 주요
+          비용 항목 <span style={{ fontWeight: 600 }}>증감률 시나리오</span>를
+          입력하면, 향후 n개월간의 영업이익 / 매출총이익 / 당기순이익 / 판관비를
+          예측합니다.
         </p>
 
         {/* 기간 */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: BRAND_DARK, minWidth: 70 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 16,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 14,
+              fontWeight: 600,
+              color: BRAND_DARK,
+              minWidth: 70,
+            }}
+          >
             예측 기간
           </span>
           <select
@@ -552,12 +577,20 @@ function ForecastTab({ cardStyle }) {
             ))}
           </select>
           <span style={{ fontSize: 12, color: "#9ca3af" }}>
-            ※ 예: 200% 입력 시 → 현재 수준의 2배로, 이후 모든 월에서 동일한 증가 비율을 가정합니다.
+            ※ 예: 200% 입력 시 → 현재 수준의 2배로, 이후 모든 월에서 동일한 증가
+            비율을 가정합니다.
           </span>
         </div>
 
         {/* 시나리오 행 */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+            marginBottom: 16,
+          }}
+        >
           {scenarioRows.map((row) => (
             <div
               key={row.id}
@@ -570,7 +603,9 @@ function ForecastTab({ cardStyle }) {
             >
               <select
                 value={row.driverKey}
-                onChange={(e) => handleRowChange(row.id, "driverKey", e.target.value)}
+                onChange={(e) =>
+                  handleRowChange(row.id, "driverKey", e.target.value)
+                }
                 style={{
                   width: "100%",
                   borderRadius: 999,
@@ -601,7 +636,9 @@ function ForecastTab({ cardStyle }) {
                 <input
                   type="number"
                   value={row.value}
-                  onChange={(e) => handleRowChange(row.id, "value", e.target.value)}
+                  onChange={(e) =>
+                    handleRowChange(row.id, "value", e.target.value)
+                  }
                   style={{
                     flex: 1,
                     border: "none",
@@ -610,7 +647,9 @@ function ForecastTab({ cardStyle }) {
                     textAlign: "right",
                   }}
                 />
-                <span style={{ marginLeft: 4, fontSize: 13, color: "#6b7280" }}>%</span>
+                <span style={{ marginLeft: 4, fontSize: 13, color: "#6b7280" }}>
+                  %
+                </span>
               </div>
 
               <button
@@ -633,7 +672,14 @@ function ForecastTab({ cardStyle }) {
         </div>
 
         {/* 버튼 */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button
               type="button"
@@ -696,7 +742,8 @@ function ForecastTab({ cardStyle }) {
               padding: "9px 22px",
               fontSize: 13,
               fontWeight: 600,
-              background: "linear-gradient(135deg, #16a34a, " + BRAND_ORANGE + ")",
+              background:
+                "linear-gradient(135deg, #16a34a, " + BRAND_ORANGE + ")",
               color: "#ffffff",
               boxShadow: "0 12px 30px rgba(22,163,74,0.35)",
               cursor: loading || syncLoading ? "default" : "pointer",
@@ -712,7 +759,8 @@ function ForecastTab({ cardStyle }) {
           <div style={{ marginTop: 10, fontSize: 12 }}>
             {syncStatus.running && (
               <span style={{ color: "#f59e0b" }}>
-                ⏳ 데이터 업데이트 및 재학습 진행 중입니다… (step: {syncStatus.step || "running"})
+                ⏳ 데이터 업데이트 및 재학습 진행 중입니다… (step:{" "}
+                {syncStatus.step || "running"})
               </span>
             )}
 
@@ -739,8 +787,19 @@ function ForecastTab({ cardStyle }) {
       </section>
 
       {/* 결과 카드 */}
-      <section style={{ ...baseCardStyle, position: "relative" }} ref={resultRef} className="forecast-fade-up">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+      <section
+        style={{ ...baseCardStyle, position: "relative" }}
+        ref={resultRef}
+        className="forecast-fade-up"
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: 10,
+          }}
+        >
           <h3 style={{ fontSize: 16, fontWeight: 600, color: BRAND_DARK }}>
             예측 결과 (월별 추세 & 영향도)
           </h3>
@@ -765,7 +824,8 @@ function ForecastTab({ cardStyle }) {
 
         {!result && (
           <p style={{ fontSize: 12, color: "#9ca3af" }}>
-            상단에서 시나리오를 입력한 뒤 <span style={{ fontWeight: 600 }}>“예측 실행”</span>을 눌러주세요.
+            상단에서 시나리오를 입력한 뒤{" "}
+            <span style={{ fontWeight: 600 }}>“예측 실행”</span>을 눌러주세요.
           </p>
         )}
 
@@ -786,14 +846,19 @@ function ForecastTab({ cardStyle }) {
                   style={{
                     borderRadius: 16,
                     padding: 12,
-                    background: "linear-gradient(135deg, #ecfdf5, #dcfce7, #f0fdf4)",
+                    background:
+                      "linear-gradient(135deg, #ecfdf5, #dcfce7, #f0fdf4)",
                     border: "1px solid #bbf7d0",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#065f46", marginBottom: 4 }}>
+                  <div
+                    style={{ fontSize: 11, color: "#065f46", marginBottom: 4 }}
+                  >
                     {kpiSummary.year}년 {kpiSummary.month}월 영업이익
                   </div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#065f46" }}>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 700, color: "#065f46" }}
+                  >
                     {fmt(kpiSummary.op)}
                   </div>
                   <div
@@ -803,7 +868,8 @@ function ForecastTab({ cardStyle }) {
                       color: kpiSummary.opDiff >= 0 ? "#16a34a" : "#b91c1c",
                     }}
                   >
-                    {kpiSummary.opDiff >= 0 ? "▲" : "▼"} {fmt(Math.abs(kpiSummary.opDiff))} (
+                    {kpiSummary.opDiff >= 0 ? "▲" : "▼"}{" "}
+                    {fmt(Math.abs(kpiSummary.opDiff))} (
                     {kpiSummary.opRate >= 0 ? "+" : "-"}
                     {Math.abs(kpiSummary.opRate).toFixed(1)}%)
                   </div>
@@ -814,14 +880,19 @@ function ForecastTab({ cardStyle }) {
                   style={{
                     borderRadius: 16,
                     padding: 12,
-                    background: "linear-gradient(135deg, #eff6ff, #e0f2fe, #eef2ff)",
+                    background:
+                      "linear-gradient(135deg, #eff6ff, #e0f2fe, #eef2ff)",
                     border: "1px solid #bfdbfe",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#1d4ed8", marginBottom: 4 }}>
+                  <div
+                    style={{ fontSize: 11, color: "#1d4ed8", marginBottom: 4 }}
+                  >
                     {kpiSummary.year}년 {kpiSummary.month}월 당기순이익
                   </div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#1d4ed8" }}>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 700, color: "#1d4ed8" }}
+                  >
                     {fmt(kpiSummary.ni)}
                   </div>
                   <div
@@ -831,7 +902,8 @@ function ForecastTab({ cardStyle }) {
                       color: kpiSummary.niDiff >= 0 ? "#2563eb" : "#b91c1c",
                     }}
                   >
-                    {kpiSummary.niDiff >= 0 ? "▲" : "▼"} {fmt(Math.abs(kpiSummary.niDiff))} (
+                    {kpiSummary.niDiff >= 0 ? "▲" : "▼"}{" "}
+                    {fmt(Math.abs(kpiSummary.niDiff))} (
                     {kpiSummary.niRate >= 0 ? "+" : "-"}
                     {Math.abs(kpiSummary.niRate).toFixed(1)}%)
                   </div>
@@ -842,14 +914,19 @@ function ForecastTab({ cardStyle }) {
                   style={{
                     borderRadius: 16,
                     padding: 12,
-                    background: "linear-gradient(135deg, #fefce8, #fffbeb, #fef9c3)",
+                    background:
+                      "linear-gradient(135deg, #fefce8, #fffbeb, #fef9c3)",
                     border: "1px solid #facc15",
                   }}
                 >
-                  <div style={{ fontSize: 11, color: "#854d0e", marginBottom: 4 }}>
+                  <div
+                    style={{ fontSize: 11, color: "#854d0e", marginBottom: 4 }}
+                  >
                     {kpiSummary.year}년 {kpiSummary.month}월 판관비(전체)
                   </div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: "#854d0e" }}>
+                  <div
+                    style={{ fontSize: 18, fontWeight: 700, color: "#854d0e" }}
+                  >
                     {fmt(kpiSummary.sga)}
                   </div>
                   <div
@@ -859,7 +936,8 @@ function ForecastTab({ cardStyle }) {
                       color: kpiSummary.sgaDiff <= 0 ? "#16a34a" : "#b91c1c",
                     }}
                   >
-                    {kpiSummary.sgaDiff <= 0 ? "▼" : "▲"} {fmt(Math.abs(kpiSummary.sgaDiff))} (
+                    {kpiSummary.sgaDiff <= 0 ? "▼" : "▲"}{" "}
+                    {fmt(Math.abs(kpiSummary.sgaDiff))} (
                     {kpiSummary.sgaRate >= 0 ? "+" : "-"}
                     {Math.abs(kpiSummary.sgaRate).toFixed(1)}%)
                   </div>
@@ -877,11 +955,26 @@ function ForecastTab({ cardStyle }) {
               }}
             >
               {/* 이익 추세 */}
-              <div style={{ borderRadius: 18, border: "1px solid #e5e7eb", padding: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: BRAND_DARK }}>
+              <div
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid #e5e7eb",
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginBottom: 6,
+                    color: BRAND_DARK,
+                  }}
+                >
                   이익 추세 (영업이익 / 매출총이익 / 당기순이익)
                 </div>
-                <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>
+                <div
+                  style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}
+                >
                   시나리오 적용 후 향후 월별 이익 흐름입니다. (단위: 억 원)
                 </div>
                 <div style={{ width: "100%", height: 260 }}>
@@ -891,7 +984,9 @@ function ForecastTab({ cardStyle }) {
                       <XAxis dataKey="label" />
                       <YAxis tickFormatter={fmtHundredMillion} />
                       <Tooltip
-                        formatter={(v) => (typeof v === "number" ? fmtHundredMillion(v) : v)}
+                        formatter={(v) =>
+                          typeof v === "number" ? fmtHundredMillion(v) : v
+                        }
                       />
                       <Legend content={renderTrendLegend} />
                       <Line
@@ -924,23 +1019,70 @@ function ForecastTab({ cardStyle }) {
               </div>
 
               {/* Impact */}
-              <div style={{ borderRadius: 18, border: "1px solid #e5e7eb", padding: 12 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: BRAND_DARK }}>
+              <div
+                style={{
+                  borderRadius: 18,
+                  border: "1px solid #e5e7eb",
+                  padding: 12,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 600,
+                    marginBottom: 6,
+                    color: BRAND_DARK,
+                  }}
+                >
                   항목별 영업이익 영향도 (Impact Ranking)
                 </div>
-                <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}>
-                  각 항목만 단독으로 적용했을 때, <b>마지막 월 영업이익</b>이 기준 대비 얼마나 변하는지입니다. (단위: %)
+                <div
+                  style={{ fontSize: 11, color: "#9ca3af", marginBottom: 4 }}
+                >
+                  각 항목만 단독으로 적용했을 때, <b>마지막 월 영업이익</b>이
+                  기준 대비 얼마나 변하는지입니다. (단위: %)
                 </div>
 
-                <div style={{ display: "flex", width: "100%", height: 260, alignItems: "stretch", gap: 12 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    width: "100%",
+                    height: 260,
+                    alignItems: "stretch",
+                    gap: 12,
+                  }}
+                >
                   <div style={{ flex: "1 1 auto" }}>
                     <ResponsiveContainer>
-                      <BarChart data={impactChartData} layout="vertical" margin={{ top: 10, right: 16, left: 40, bottom: 10 }}>
+                      <BarChart
+                        data={impactChartData}
+                        layout="vertical"
+                        margin={{ top: 10, right: 16, left: 40, bottom: 10 }}
+                      >
                         <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis type="number" domain={impactDomain} tickFormatter={(v) => `${v.toFixed(1)}%`} />
-                        <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                        <Tooltip formatter={(v) => `${v.toFixed(2)}%`} labelFormatter={(name) => `${name}`} />
-                        <Bar dataKey="rate" radius={8} barSize={22} isAnimationActive animationDuration={700}>
+                        <XAxis
+                          type="number"
+                          domain={impactDomain}
+                          tickFormatter={(v) => `${v.toFixed(1)}%`}
+                        />
+                        <YAxis
+                          type="category"
+                          dataKey="name"
+                          tick={{ fontSize: 11 }}
+                          axisLine={false}
+                          tickLine={false}
+                        />
+                        <Tooltip
+                          formatter={(v) => `${v.toFixed(2)}%`}
+                          labelFormatter={(name) => `${name}`}
+                        />
+                        <Bar
+                          dataKey="rate"
+                          radius={8}
+                          barSize={22}
+                          isAnimationActive
+                          animationDuration={700}
+                        >
                           {impactChartData.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={entry.color} />
                           ))}
@@ -949,11 +1091,39 @@ function ForecastTab({ cardStyle }) {
                     </ResponsiveContainer>
                   </div>
 
-                  <div style={{ width: 120, fontSize: 11, color: "#4b5563", display: "flex", flexDirection: "column", justifyContent: "center", gap: 6 }}>
+                  <div
+                    style={{
+                      width: 120,
+                      fontSize: 11,
+                      color: "#4b5563",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
                     {impactChartData.map((item) => (
-                      <div key={item.name} style={{ display: "flex", alignItems: "center", gap: 6, opacity: Math.abs(item.rate || 0) < 0.05 ? 0.5 : 1 }}>
-                        <span style={{ width: 10, height: 10, borderRadius: "999px", backgroundColor: item.color, boxShadow: "0 0 0 1px rgba(148,163,184,0.4)" }} />
-                        <span style={{ whiteSpace: "nowrap" }}>{item.name}</span>
+                      <div
+                        key={item.name}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          opacity: Math.abs(item.rate || 0) < 0.05 ? 0.5 : 1,
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 10,
+                            height: 10,
+                            borderRadius: "999px",
+                            backgroundColor: item.color,
+                            boxShadow: "0 0 0 1px rgba(148,163,184,0.4)",
+                          }}
+                        />
+                        <span style={{ whiteSpace: "nowrap" }}>
+                          {item.name}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -962,8 +1132,21 @@ function ForecastTab({ cardStyle }) {
             </div>
 
             {/* 표 */}
-            <div style={{ borderRadius: 16, border: "1px solid #e5e7eb", padding: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6, color: BRAND_DARK }}>
+            <div
+              style={{
+                borderRadius: 16,
+                border: "1px solid #e5e7eb",
+                padding: 12,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 600,
+                  marginBottom: 6,
+                  color: BRAND_DARK,
+                }}
+              >
                 예측 결과 (월별 상세)
               </div>
               <div style={{ fontSize: 11, color: "#9ca3af", marginBottom: 6 }}>
@@ -971,26 +1154,96 @@ function ForecastTab({ cardStyle }) {
               </div>
 
               <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    fontSize: 11,
+                  }}
+                >
                   <thead>
-                    <tr style={{ backgroundColor: "#f9fafb", borderBottom: "1px solid #e5e7eb" }}>
-                      <th style={{ padding: "6px 8px", textAlign: "left", fontWeight: 600 }}>연도</th>
-                      <th style={{ padding: "6px 8px", textAlign: "left", fontWeight: 600 }}>월</th>
-                      <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600 }}>영업이익</th>
-                      <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600 }}>매출총이익</th>
-                      <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600 }}>당기순이익</th>
-                      <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600 }}>판관비(전체)</th>
+                    <tr
+                      style={{
+                        backgroundColor: "#f9fafb",
+                        borderBottom: "1px solid #e5e7eb",
+                      }}
+                    >
+                      <th
+                        style={{
+                          padding: "6px 8px",
+                          textAlign: "left",
+                          fontWeight: 600,
+                        }}
+                      >
+                        연도
+                      </th>
+                      <th
+                        style={{
+                          padding: "6px 8px",
+                          textAlign: "left",
+                          fontWeight: 600,
+                        }}
+                      >
+                        월
+                      </th>
+                      <th
+                        style={{
+                          padding: "6px 8px",
+                          textAlign: "right",
+                          fontWeight: 600,
+                        }}
+                      >
+                        영업이익
+                      </th>
+                      <th
+                        style={{
+                          padding: "6px 8px",
+                          textAlign: "right",
+                          fontWeight: 600,
+                        }}
+                      >
+                        매출총이익
+                      </th>
+                      <th
+                        style={{
+                          padding: "6px 8px",
+                          textAlign: "right",
+                          fontWeight: 600,
+                        }}
+                      >
+                        당기순이익
+                      </th>
+                      <th
+                        style={{
+                          padding: "6px 8px",
+                          textAlign: "right",
+                          fontWeight: 600,
+                        }}
+                      >
+                        판관비(전체)
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {tableRows.map((row) => (
-                      <tr key={row.id} style={{ borderTop: "1px solid #f3f4f6" }}>
+                      <tr
+                        key={row.id}
+                        style={{ borderTop: "1px solid #f3f4f6" }}
+                      >
                         <td style={{ padding: "6px 8px" }}>{row.year}</td>
                         <td style={{ padding: "6px 8px" }}>{row.month}</td>
-                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{fmt(row.op)}</td>
-                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{fmt(row.gp)}</td>
-                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{fmt(row.ni)}</td>
-                        <td style={{ padding: "6px 8px", textAlign: "right" }}>{fmt(row.sga)}</td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {fmt(row.op)}
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {fmt(row.gp)}
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {fmt(row.ni)}
+                        </td>
+                        <td style={{ padding: "6px 8px", textAlign: "right" }}>
+                          {fmt(row.sga)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
