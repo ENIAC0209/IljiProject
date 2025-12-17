@@ -88,8 +88,6 @@ BACKDATA_EXCEL_PATH = BASE_DIR / "3back_data_with_fake11_v2.xlsx"
 REPORT_DATA_DIR = BASE_DIR / "report_data"
 REPORT_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-BASE_EXCEL_PATH = str(BASE_DIR / "코스트센터_2년치_가상데이터_전체.xlsx")  # (선택) 2년치 기준 데이터(구버전 호환용)
-
 ADV_CLASS_XLSX_PATH = BASE_DIR / "코스트센터별_분류.xlsx"
 
 # ✅ 서버 시작 시 1회 모델 로딩
@@ -210,7 +208,6 @@ def load_advanced_class_map(use_cache: bool = True) -> Dict[str, Dict[str, str]]
 # ✅ 시즌/이벤트성 비용 규칙(상여/포상비/법인세)
 # =====================================================
 _SPECIAL_RULES = [
-    # 노무비-상여: 2개월 주기(격월). 시작(홀/짝)은 데이터에서 자동 추정.
     {
         "key": "BONUS_BIMONTHLY",
         "name": "노무비-상여",
@@ -218,7 +215,6 @@ _SPECIAL_RULES = [
         "type": "bimonthly",
         "tags": ["반복", "이벤트"],
     },
-    # 복리후생비-포상비: 2,9,11월만 발생
     {
         "key": "REWARD_EVENT",
         "name": "복리후생비-포상비",
@@ -227,7 +223,6 @@ _SPECIAL_RULES = [
         "months": {2, 9, 11},
         "tags": ["시즌", "이벤트"],
     },
-    # 법인세 비용: 3,6,9,12월만 발생
     {
         "key": "CORP_TAX_QUARTERLY",
         "name": "법인세 비용",
@@ -269,7 +264,6 @@ def _ensure_list_tags(v):
         s = v.strip()
         if not s:
             return []
-        # "['a','b']" 같은 문자열이 들어오는 경우 대비
         if s.startswith("[") and s.endswith("]"):
             inner = s[1:-1].strip()
             if not inner:
@@ -292,16 +286,9 @@ def _add_tags(existing: Any, add: List[str]) -> List[str]:
 
 
 def _infer_bimonthly_parity_for_group(g: pd.DataFrame) -> int:
-    """
-    격월 패턴의 '발생 월(홀/짝)'을 과거 발생(>0) 데이터에서 추정.
-    반환: 0(짝수월 발생) 또는 1(홀수월 발생)
-    """
-    # 최근 24개월 정도만 보되, 충분히 없으면 전체
     g2 = g.sort_values(["year", "month"]).tail(24).copy()
-
     occur = g2[~g2["amount"].apply(_is_missing_like_amount)]
     if occur.empty:
-        # 근거가 없으면 관성적으로 "짝수월"로 둠(임의)
         return 0
 
     occur["parity"] = occur["month"].astype(int) % 2
@@ -310,32 +297,23 @@ def _infer_bimonthly_parity_for_group(g: pd.DataFrame) -> int:
     c1 = int(counts.get(1, 0))
 
     if c0 == c1:
-        # 동률이면 최신 발생 월의 parity
         last_m = int(occur.iloc[-1]["month"])
         return last_m % 2
     return 0 if c0 > c1 else 1
 
 
 def apply_season_event_rules(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    시즌/이벤트성 규칙을 issue_type/anomaly_flag/severity_rank/reason에 반영.
-    - 비발생 월: 0/결측은 정상 처리
-    - 발생 월: 0/결측은 누락(결측 의심) 강화
-    - 비발생 월: 금액 발생은 이상 강화
-    """
     need = {"account_name", "year", "month", "amount", "cost_center", "account_code"}
     if (need - set(df.columns)):
         return df
 
     df = df.copy()
 
-    # reason_kor / reason_tags 없을 수 있음
     if "reason_kor" not in df.columns:
         df["reason_kor"] = ""
     if "reason_tags" not in df.columns:
         df["reason_tags"] = [[] for _ in range(len(df))]
 
-    # 기본 컬럼 방어
     if "issue_type" not in df.columns:
         df["issue_type"] = "정상"
     if "severity_rank" not in df.columns:
@@ -343,7 +321,6 @@ def apply_season_event_rules(df: pd.DataFrame) -> pd.DataFrame:
     if "anomaly_flag" not in df.columns:
         df["anomaly_flag"] = False
 
-    # 격월(상여) parity 맵 추정
     bonus_mask = df["account_name"].astype(str).apply(lambda s: bool(_SPECIAL_RULES[0]["pattern"].search(s)))
     bonus_df = df[bonus_mask].copy()
 
@@ -353,7 +330,6 @@ def apply_season_event_rules(df: pd.DataFrame) -> pd.DataFrame:
             key = f"{cc}|{acc}"
             parity_map[key] = _infer_bimonthly_parity_for_group(g)
 
-    # row-by-row 적용 (데이터량이 큰 편이어도 보통 수만행 수준이라 이 정도는 OK)
     for idx, row in df.iterrows():
         rule = _match_special_rule(row.get("account_name"))
         if not rule:
@@ -375,29 +351,18 @@ def apply_season_event_rules(df: pd.DataFrame) -> pd.DataFrame:
             expected_occurs = (m % 2 == parity)
             rule_desc = "2개월 주기(격월) 발생"
 
-        # 태그 추가(항상)
         df.at[idx, "reason_tags"] = _add_tags(df.at[idx, "reason_tags"], rule.get("tags", []))
 
-        # -----------------------------
-        # 케이스 1) 비발생 월인데 0/결측 -> 정상 처리(결측 잡혔어도 되돌림)
-        # -----------------------------
         if (not expected_occurs) and amt_missing_like:
-            # issue_type이 결측 의심이더라도 정상으로 되돌림
             df.at[idx, "issue_type"] = "정상"
             df.at[idx, "anomaly_flag"] = False
             df.at[idx, "severity_rank"] = 0
 
-            # reason_kor는 "문제 행"에만 주로 쓰지만, 혹시 프론트에서 상세를 볼 때 도움이 되도록 남김
             msg = f"[규칙반영] {rule['name']}은(는) {rule_desc} → 해당 월은 비발생이 정상입니다."
             rk = str(df.at[idx, "reason_kor"] or "").strip()
             df.at[idx, "reason_kor"] = (rk + " " + msg).strip()
-
-            # 결측/0값 태그는 굳이 붙이지 않음(정상 처리이므로)
             continue
 
-        # -----------------------------
-        # 케이스 2) 발생 월인데 0/결측 -> 누락(결측 의심) 강화
-        # -----------------------------
         if expected_occurs and amt_missing_like:
             df.at[idx, "issue_type"] = "결측 의심"
             df.at[idx, "anomaly_flag"] = True
@@ -409,9 +374,6 @@ def apply_season_event_rules(df: pd.DataFrame) -> pd.DataFrame:
             df.at[idx, "reason_kor"] = (rk + " " + msg).strip()
             continue
 
-        # -----------------------------
-        # 케이스 3) 비발생 월인데 금액 발생 -> 이상 강화
-        # -----------------------------
         if (not expected_occurs) and (not amt_missing_like):
             df.at[idx, "issue_type"] = "이상치 의심"
             df.at[idx, "anomaly_flag"] = True
@@ -423,14 +385,9 @@ def apply_season_event_rules(df: pd.DataFrame) -> pd.DataFrame:
             df.at[idx, "reason_kor"] = (rk + " " + msg).strip()
             continue
 
-        # -----------------------------
-        # 케이스 4) 발생 월 & 금액 발생 -> 정상/이상 여부는 기존 모델 판단 유지
-        #  - 다만 사유에 '이벤트성 발생월' 힌트만 추가
-        # -----------------------------
         if expected_occurs and (not amt_missing_like):
             msg = f"[규칙반영] {rule['name']} 발생 월({rule_desc})입니다."
             rk = str(df.at[idx, "reason_kor"] or "").strip()
-            # 너무 중복으로 길어질 수 있어, 같은 문구가 이미 있으면 추가하지 않음
             if msg not in rk:
                 df.at[idx, "reason_kor"] = (rk + " " + msg).strip()
 
@@ -533,9 +490,6 @@ def _summarize_reason(
     bag_set = set(bag)
     norm_tags = [t for t in ORDER if t in bag_set]
 
-    # -------------------------
-    # (A) 누락 케이스
-    # -------------------------
     if display_issue_type == "누락":
         def _yn(v):
             if v is True:
@@ -556,9 +510,6 @@ def _summarize_reason(
             core += f" · 원인:{'/'.join(miss_tags)}"
         return core
 
-    # -------------------------
-    # (B) 이상/기타 케이스
-    # -------------------------
     parts = []
     mom_txt = _fmt_mom(mom_change_pct)
     if mom_txt:
@@ -625,6 +576,7 @@ def _summarize_reason(
 
 # =====================================================
 # ✅ 전월 금액 / 전월대비 % 계산
+#   ✅ FIX: cur=0이어도 prev!=0이면 -100% 계산되게
 # =====================================================
 def add_mom_change(df: pd.DataFrame) -> pd.DataFrame:
     need = {"cost_center", "account_code", "year", "month", "amount"}
@@ -646,11 +598,11 @@ def add_mom_change(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             return None
 
-        if cur_f == 0.0:
-            return None
+        # ✅ 분모 0(전월 0)은 계산하지 않음(무한대 방지)
         if prev_f == 0.0:
             return None
 
+        # ✅ cur이 0이어도 계산 허용: prev>0이면 -100%
         return (cur_f - prev_f) / abs(prev_f) * 100.0
 
     df["mom_change_pct"] = df.apply(_calc, axis=1)
