@@ -26,6 +26,7 @@ import PlReportTab from "./components/tabs/PlReportTab";
 // ✅ 주제3-4 추가 탭
 import PlReportCauseTab from "./components/tabs/PlReportCauseTab";
 import ForecastTab from "./components/tabs/ForecastTab";
+import FxTariffCompareTab from "./components/tabs/FxTariffCompareTab";
 
 // ✅ 로그인 페이지
 import LoginPage from "./pages/loginPage";
@@ -1163,7 +1164,7 @@ function App() {
         if (codeNameMap[rawKey]) {
           displayName = codeNameMap[rawKey];
         } else {
-          const token = rawKey.split(/[\/\s]/)[0];
+          const token = rawKey.split(/[/\s]/)[0];
           if (codeNameMap[token])
             displayName = `${codeNameMap[token]} (${rawKey})`;
         }
@@ -1372,15 +1373,23 @@ function App() {
       desc: "미래 결산 시나리오",
       icon: iconChart,
     },
+    {
+      id: "fx-tariff",
+      label: "FX · Tariff",
+      desc: "환율/관세 영향 (내수 vs 직수출)",
+      icon: iconChart,
+    },
+
   ];
 
   const currentMenu = useMemo(() => {
-    const direct = sideMenus.find((m) => m.id === tab);
+    const direct = sideMenus.find((m) => m && m.id === tab);
     if (direct) return direct;
 
     for (const m of sideMenus) {
+      if (!m) continue;
       const kids = Array.isArray(m.children) ? m.children : [];
-      const child = kids.find((c) => c.id === tab);
+      const child = kids.find((c) => c && c.id === tab);
       if (child) {
         return {
           ...m,
@@ -2013,6 +2022,8 @@ function App() {
         )}
 
         {tab === "forecast" && <ForecastTab cardStyle={cardStyle} />}
+
+        {tab === "fx-tariff" && <FxTariffCompareTab cardStyle={cardStyle} />}
       </main>
     </div>
   );
