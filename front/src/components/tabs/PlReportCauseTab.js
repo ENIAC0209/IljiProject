@@ -217,6 +217,7 @@ function pickGray() {
 }
 
 /* ✅ Impact: 증감 방향 무관, 영향(0 제외)이면 파랑 / 아니면 회색 */
+/* ✅ Impact: 증감 방향 무관, 영향(미미 제외)이면 파랑 / 아니면 회색 */
 function impactTone(impactPct, parentDiff) {
   const pd = safeNum(parentDiff);
   const ii = safeNum(impactPct);
@@ -224,10 +225,11 @@ function impactTone(impactPct, parentDiff) {
   // parent Δ=0이면 impact 의미 없음 -> 회색
   if (Math.abs(pd) < 1e-9) return "gray";
 
-  // 영향 없음(0 근처) -> 회색
-  if (Math.abs(ii) < 1e-9) return "gray";
+  // ✅ "미미" 기준: Impact 절대값이 3% 미만이면 회색 (원하면 숫자만 조절)
+  const MIN_IMPACT_PCT = 5;
 
-  // 영향 있음 -> 파랑
+  if (Math.abs(ii) < MIN_IMPACT_PCT) return "gray";
+
   return "blue";
 }
 
@@ -238,31 +240,54 @@ function Card({ title, right, children, style }) {
   return (
     <div
       style={{
+        position: "relative", // ✅ 중요
         background: UI.card,
         border: `1px solid ${UI.line}`,
         borderRadius: UI.radiusLg,
-        boxShadow: UI.shadowSm,
+
+        // ✅ 위쪽 그림자 거의 없고, 아래만 남김
+        boxShadow: "0 2px 4px rgba(15,23,42,0.04)",
+
         padding: 16,
         ...style,
       }}
     >
-      {(title || right) && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "center",
-            marginBottom: 12,
-          }}
-        >
-          <div style={{ fontSize: 13, fontWeight: 900, color: UI.text }}>
-            {title}
+      {/* ✅ 탭 아래쪽 그림자 가리기용 마스크 */}
+      <div
+        style={{
+          position: "absolute",
+          top: -1,
+          left: 0,
+          right: 0,
+          height: 12, // 탭이 닿는 영역만
+          background: UI.card,
+          borderTopLeftRadius: UI.radiusLg,
+          borderTopRightRadius: UI.radiusLg,
+          zIndex: 1,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* 실제 콘텐츠 */}
+      <div style={{ position: "relative", zIndex: 2 }}>
+        {(title || right) && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              gap: 12,
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 900, color: UI.text }}>
+              {title}
+            </div>
+            {right}
           </div>
-          {right}
-        </div>
-      )}
-      {children}
+        )}
+        {children}
+      </div>
     </div>
   );
 }
@@ -322,6 +347,59 @@ function SegButton({ active, children, onClick }) {
       }}
     >
       {children}
+    </button>
+  );
+}
+function IndexTab({ active, label, onClick }) {
+  // ✅ 탭별 컬러 지정 (원하는대로 바꿔도 됨)
+  const TAB_COLORS = {
+    영업이익: { on: "#2563EB", off: "rgba(37,99,235,0.35)" }, // Blue
+    당기순이익: { on: "#7C3AED", off: "rgba(124,58,237,0.32)" }, // Purple
+  };
+
+  const c = TAB_COLORS[label] || { on: UI.blue, off: "rgba(148,163,184,0.55)" };
+
+  const tabStyle = {
+    position: "relative",
+    height: 30,
+    padding: "0 12px",
+    borderRadius: "10px 10px 4px 4px",
+    border: "1px solid rgba(15, 23, 42, 0.14)",
+    borderBottom: "1px solid #ffffff",
+    background: active ? "#ffffff" : "rgba(15,23,42,0.03)",
+    color: active ? UI.text : "rgba(81,96,116,0.95)",
+    fontSize: 11,
+    fontWeight: 900,
+    cursor: "pointer",
+    boxShadow: "none",
+    transform: "translateY(1px)",
+    transition: "all 120ms ease",
+    display: "inline-flex",
+    alignItems: "center",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={tabStyle}
+      aria-pressed={active}
+    >
+      {/* ✅ 상단 색띠: 탭마다 다르게 */}
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          top: 0,
+          height: 3,
+          background: active ? c.on : c.off,
+        }}
+      />
+      <span style={{ paddingTop: 1, marginLeft: -2 }}>{label}</span>
     </button>
   );
 }
@@ -597,6 +675,197 @@ function KpiStrip({ items = [] }) {
     </div>
   );
 }
+function AiConclusionBox({ activeKpi, kpi, topDrivers = [], kpiDiff = 0 }) {
+  const [open, setOpen] = React.useState(false);
+
+  const main = kpi || { prev: 0, cur: 0, diff: 0, rate: 0 };
+  const diff = safeNum(main.diff);
+  const prev = safeNum(main.prev);
+  const cur = safeNum(main.cur);
+  const rate = safeNum(main.rate);
+
+  const dirWord =
+    diff > 0 ? "증가" : diff < 0 ? "감소" : "변동이 거의 없습니다";
+  const dirTone = signTone(diff);
+  const pillTone =
+    dirTone === "pos" ? "pos" : dirTone === "neg" ? "neg" : "neutral";
+
+  const t1 = topDrivers?.[0];
+  const t2 = topDrivers?.[1];
+  const t3 = topDrivers?.[2];
+
+  const topSum =
+    safeNum(t1?.contrib) + safeNum(t2?.contrib) + safeNum(t3?.contrib);
+
+  const explainPct = Math.abs(diff) > 1e-9 ? (topSum / diff) * 100 : 0;
+
+  const summary1 = `${activeKpi}이(가) 전월 대비 ${dirWord}했습니다.`;
+  const summary2 = `전월 ${formatNumber(prev)} → 당월 ${formatNumber(
+    cur
+  )} (Δ ${formatSignedNumber(diff)}, ${formatRate(rate)})`;
+  const summary3 = t1
+    ? `주요 요인: ${t1.component}(${formatSignedNumber(safeNum(t1.contrib))})`
+    : "주요 요인 데이터가 없습니다.";
+
+  return (
+    <div
+      style={{
+        background: UI.card,
+        border: `1px solid ${UI.line}`,
+        borderRadius: UI.radiusLg,
+        boxShadow: UI.shadow,
+        padding: 14,
+        marginBottom: 10,
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 10,
+          alignItems: "center",
+          flexWrap: "wrap",
+        }}
+      >
+        <div style={{ fontSize: 12, fontWeight: 950, color: UI.text }}>
+          AI 결론
+        </div>
+
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <Pill tone={pillTone}>{dirWord}</Pill>
+
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: UI.radiusLg,
+              border: `1px solid ${UI.line}`,
+              background: open ? "rgba(15,23,42,0.04)" : "#fff",
+              color: UI.text,
+              fontSize: 11,
+              fontWeight: 900,
+              cursor: "pointer",
+            }}
+          >
+            {open ? "상세 닫기" : "상세 보기"}
+          </button>
+        </div>
+      </div>
+
+      {/* Summary (항상 표시) */}
+      <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 950,
+            color: UI.text,
+            lineHeight: 1.7,
+          }}
+        >
+          {summary1}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 850,
+            color: UI.sub,
+            lineHeight: 1.7,
+          }}
+        >
+          {summary2}
+        </div>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 850,
+            color: "rgba(100,116,139,0.95)",
+            lineHeight: 1.7,
+          }}
+        >
+          {summary3}
+        </div>
+      </div>
+
+      {/* Detail (토글) */}
+      {open && (
+        <div
+          style={{
+            marginTop: 12,
+            borderTop: `1px solid ${UI.line}`,
+            paddingTop: 12,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 900, color: UI.text }}>
+            주요 변화 요인(TOP3)
+          </div>
+
+          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+            {[t1, t2, t3].filter(Boolean).length === 0 ? (
+              <div style={{ fontSize: 12, color: UI.sub }}>
+                Driver 데이터가 없습니다.
+              </div>
+            ) : (
+              [t1, t2, t3].filter(Boolean).map((d, i) => (
+                <div
+                  key={d.component}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    alignItems: "center",
+                    fontSize: 11,
+                    fontWeight: 850,
+                    color: UI.sub,
+                  }}
+                >
+                  <span
+                    style={{
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
+                    {i + 1}) {d.component}
+                  </span>
+                  <Pill tone={signTone(d.contrib)} style={{ fontSize: 11 }}>
+                    {formatSignedNumber(safeNum(d.contrib))}
+                  </Pill>
+                </div>
+              ))
+            )}
+          </div>
+
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 11,
+              fontWeight: 850,
+              color: "rgba(100,116,139,0.95)",
+              lineHeight: 1.6,
+            }}
+          >
+            {Math.abs(diff) < 1e-9
+              ? "KPI Δ가 0에 가까워 TOP3 설명 비중을 계산하지 않습니다."
+              : `TOP3 합은 KPI Δ의 ${formatRate(
+                  explainPct
+                )} 수준입니다. (집계/반올림/분류 기준에 따라 100%와 다를 수 있음)`}
+          </div>
+
+          <div
+            style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}
+          >
+            <Pill tone="gray" title="KPI Δ(보조)">
+              보조: KPI Δ {formatSignedNumber(safeNum(kpiDiff))}
+            </Pill>
+            {t1 && <Pill tone="blue">1위 요인 클릭 → 세부요인 추적</Pill>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* =========================
  * KPI Header
@@ -768,7 +1037,7 @@ function KpiHeader({
               marginBottom: 10,
             }}
           >
-            변화 요인 TOP 3 (클릭하면 Drill-down 시작)
+            변화 요인 TOP 3 (클릭하면 세부요인 출력)
           </div>
 
           {topDrivers.length === 0 ? (
@@ -807,7 +1076,7 @@ function KpiHeader({
                       gap: 12,
                       alignItems: "center",
                     }}
-                    title="클릭하면 Drill-down 시작"
+                    title="클릭하면 세부요인"
                   >
                     <div style={{ minWidth: 0 }}>
                       <div
@@ -1256,18 +1525,39 @@ export default function PlReportCauseTab({ selectedYm: selectedYmProp }) {
     <div style={{ width: "100%", background: UI.bg, padding: 14 }}>
       {!loading && !error && viewData && <KpiStrip items={kpi4} />}
 
+      {/* ✅ 인덱스 탭 트레이 (PlReportTab의 “탭이 꽂힌” 레이아웃 패턴) :contentReference[oaicite:4]{index=4} */}
       <div
-        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}
+        style={{
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 8,
+          width: "100%",
+          flexWrap: "nowrap",
+          minWidth: 0,
+
+          position: "relative",
+          zIndex: 5,
+          marginBottom: -4, // -8~-14 사이 취향 조절(PlReportTab은 -13) :contentReference[oaicite:5]{index=5}
+        }}
       >
-        {kpiTabs.map((k) => (
-          <SegButton
-            key={k}
-            active={activeKpi === k}
-            onClick={() => setActiveKpi(k)}
-          >
-            {k}
-          </SegButton>
-        ))}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end",
+            gap: 6,
+            flexShrink: 0,
+            paddingBottom: 2,
+          }}
+        >
+          {kpiTabs.map((k) => (
+            <IndexTab
+              key={k}
+              label={k}
+              active={activeKpi === k}
+              onClick={() => setActiveKpi(k)}
+            />
+          ))}
+        </div>
       </div>
 
       {loading && (
@@ -1284,23 +1574,32 @@ export default function PlReportCauseTab({ selectedYm: selectedYmProp }) {
       {!loading && !error && viewData && (
         <>
           <div style={{ marginBottom: 12 }}>
-            <KpiHeader
-              activeKpi={activeKpi}
-              kpi={heroKpi}
-              topDrivers={topDrivers}
-              kpiDiff={safeNum(driver?.kpi_diff)}
-              activeComponent={activeComponent}
-              onPickDriver={onPickDriver}
-              parentSummary={parentSummary}
-            />
+            <div style={{ marginBottom: 12 }}>
+              <AiConclusionBox
+                activeKpi={activeKpi}
+                kpi={heroKpi}
+                topDrivers={topDrivers}
+                kpiDiff={safeNum(driver?.kpi_diff)}
+              />
+              <KpiHeader
+                activeKpi={activeKpi}
+                kpi={heroKpi}
+                topDrivers={topDrivers}
+                kpiDiff={safeNum(driver?.kpi_diff)}
+                activeComponent={activeComponent}
+                onPickDriver={onPickDriver}
+                parentSummary={parentSummary}
+              />
+            </div>
           </div>
 
           <Card
             title={
               drillStack.length
-                ? `Drill-down — ${drillStack[drillStack.length - 1].label}`
-                : "Drill-down"
+                ? `세부 요인 — ${drillStack[drillStack.length - 1].label}`
+                : "세부 요인"
             }
+            style={{ paddingTop: 18 }} // ✅ 기본 16 -> 18 (탭과 카드 콘텐츠 간격 확보)
           >
             {!drillStack.length ? (
               <div style={{ fontSize: 12, color: UI.sub, lineHeight: 1.7 }}>
