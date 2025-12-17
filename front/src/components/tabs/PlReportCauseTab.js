@@ -44,7 +44,6 @@ function joinPath(parts) {
 }
 function normalizeItem(raw) {
   const path = raw?.path ? String(raw.path) : null;
-  const name = raw?.name ? String(raw.name) : null;
 
   const cur = safeNum(raw?.cur ?? 0);
   const prev = safeNum(raw?.prev ?? 0);
@@ -58,7 +57,7 @@ function normalizeItem(raw) {
       ? 100
       : 0;
 
-  return { path, name, cur, prev, diff, rate, _raw: raw };
+  return { path, cur, prev, diff, rate, _raw: raw };
 }
 
 function buildChildrenFromPathItems(flatItems, prefixParts) {
@@ -68,9 +67,8 @@ function buildChildrenFromPathItems(flatItems, prefixParts) {
     if (!it.path) return false;
     const parts = splitPath(it.path);
     if (parts.length <= depth) return false;
-    for (let i = 0; i < depth; i++) {
+    for (let i = 0; i < depth; i++)
       if (parts[i] !== prefixParts[i]) return false;
-    }
     return true;
   });
 
@@ -103,21 +101,21 @@ function buildChildrenFromPathItems(flatItems, prefixParts) {
   out.sort((a, b) => Math.abs(safeNum(b.diff)) - Math.abs(safeNum(a.diff)));
   return out;
 }
+
 function hasDeeperLevel(flatItems, prefixParts) {
   const depth = prefixParts.length;
   return flatItems.some((it) => {
     if (!it.path) return false;
     const parts = splitPath(it.path);
     if (parts.length <= depth) return false;
-    for (let i = 0; i < depth; i++) {
+    for (let i = 0; i < depth; i++)
       if (parts[i] !== prefixParts[i]) return false;
-    }
     return true;
   });
 }
 
 /* =========================
- * ✅ 기대 드릴다운 트리 (보고서 구조 기반)
+ * 기대 드릴다운 트리
  * ========================= */
 const PL_TREE = {
   매출액: ["국내매출액", "수출매출액"],
@@ -157,190 +155,108 @@ const PL_TREE = {
 };
 
 /* =========================
- * Colors / emphasis
+ * Design tokens (전문적 + 각진)
  * ========================= */
-function toneForValue(v) {
+const UI = {
+  bg: "#F3F6FB",
+  card: "#FFFFFF",
+  text: "#0B1220",
+  sub: "#516074",
+  line: "rgba(15, 23, 42, 0.12)",
+
+  // ✅ 각진
+  radius: 6,
+  radiusLg: 8,
+
+  // ✅ 얇은 그림자
+  shadow: "0 1px 2px rgba(15,23,42,0.06)",
+  shadowSm: "0 1px 1px rgba(15,23,42,0.05)",
+
+  mono: { fontVariantNumeric: "tabular-nums" },
+
+  // ✅ 톤: 증가(비용↑) = Red, 감소 = Green
+  good: "#15803D",
+  bad: "#B91C1C",
+  neutral: "#334155",
+
+  goodBg: "rgba(21, 128, 61, 0.10)",
+  badBg: "rgba(185, 28, 28, 0.10)",
+  neutralBg: "rgba(148, 163, 184, 0.16)",
+
+  // ✅ Impact 전용
+  blue: "#2563EB",
+  blueBg: "rgba(37, 99, 235, 0.12)",
+  gray: "#475569",
+  grayBg: "rgba(148, 163, 184, 0.16)",
+
+  amberBg: "rgba(245, 158, 11, 0.12)",
+};
+
+function signTone(v) {
   const n = safeNum(v);
   if (n > 0) return "pos";
   if (n < 0) return "neg";
   return "zero";
 }
-function barColor(v, maxAbs) {
-  const n = safeNum(v);
-  const m = Math.max(1e-9, safeNum(maxAbs, 1));
-  const t = clamp(Math.abs(n) / m, 0, 1);
+function pickColor(tone) {
+  if (tone === "pos")
+    return { fg: UI.bad, bg: UI.badBg, bd: "rgba(185,28,28,0.26)" };
+  if (tone === "neg")
+    return { fg: UI.good, bg: UI.goodBg, bd: "rgba(21,128,61,0.26)" };
+  return {
+    fg: UI.gray,
+    bg: UI.neutralBg,
+    bd: "rgba(148,163,184,0.28)",
+  };
+}
+function pickBlue() {
+  return { fg: UI.blue, bg: UI.blueBg, bd: "rgba(37,99,235,0.28)" };
+}
+function pickGray() {
+  return { fg: UI.gray, bg: UI.grayBg, bd: "rgba(148,163,184,0.28)" };
+}
 
-  // + : red/orange, - : green
-  if (n >= 0) {
-    if (t > 0.75) return "#DC2626";
-    if (t > 0.45) return "#EA580C";
-    return "#FDBA74";
-  } else {
-    if (t > 0.75) return "#047857";
-    if (t > 0.45) return "#16A34A";
-    return "#86EFAC";
-  }
+/* ✅ Impact: 증감 방향 무관, 영향(0 제외)이면 파랑 / 아니면 회색 */
+function impactTone(impactPct, parentDiff) {
+  const pd = safeNum(parentDiff);
+  const ii = safeNum(impactPct);
+
+  // parent Δ=0이면 impact 의미 없음 -> 회색
+  if (Math.abs(pd) < 1e-9) return "gray";
+
+  // 영향 없음(0 근처) -> 회색
+  if (Math.abs(ii) < 1e-9) return "gray";
+
+  // 영향 있음 -> 파랑
+  return "blue";
 }
 
 /* =========================
- * ✅ UI
+ * Small UI atoms
  * ========================= */
-const UI = {
-  radius: 6,
-  radiusSm: 4,
-  border: "1px solid #E5E7EB",
-  bgPage: "#F3F4F6",
-  bg: "#FFFFFF",
-  bgSoft: "#F9FAFB",
-  text: "#111827",
-  subText: "#6B7280",
-  line: "#E5E7EB",
-};
-
-function Chip({ children, tone = "neutral", title }) {
-  const toneStyle =
-    tone === "dark"
-      ? { background: "#111827", color: "#fff", border: "1px solid #111827" }
-      : tone === "blue"
-      ? { background: "#EFF6FF", color: "#1D4ED8", border: "1px solid #BFDBFE" }
-      : tone === "amber"
-      ? { background: "#FFFBEB", color: "#92400E", border: "1px solid #FDE68A" }
-      : tone === "red"
-      ? { background: "#FEF2F2", color: "#B91C1C", border: "1px solid #FECACA" }
-      : tone === "green"
-      ? { background: "#ECFDF5", color: "#047857", border: "1px solid #A7F3D0" }
-      : {
-          background: "#F3F4F6",
-          color: "#374151",
-          border: "1px solid #E5E7EB",
-        };
-
-  return (
-    <span
-      title={title || ""}
-      style={{
-        ...toneStyle,
-        fontSize: 11,
-        padding: "4px 10px",
-        borderRadius: UI.radiusSm,
-        fontWeight: 900,
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 6,
-        whiteSpace: "nowrap",
-      }}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Button({
-  children,
-  onClick,
-  disabled,
-  tone = "solid",
-  title,
-  style: styleProp,
-}) {
-  const base = {
-    fontSize: 12,
-    padding: "9px 12px",
-    borderRadius: UI.radius,
-    fontWeight: 900,
-    cursor: disabled ? "not-allowed" : "pointer",
-    userSelect: "none",
-    border: "1px solid transparent",
-    opacity: disabled ? 0.55 : 1,
-  };
-
-  const style =
-    tone === "outline"
-      ? {
-          ...base,
-          background: "#fff",
-          color: UI.text,
-          border: "1px solid #D1D5DB",
-        }
-      : tone === "ghost"
-      ? {
-          ...base,
-          background: "#F3F4F6",
-          color: "#374151",
-          border: "1px solid #E5E7EB",
-        }
-      : {
-          ...base,
-          background: "#111827",
-          color: "#fff",
-          border: "1px solid #111827",
-        };
-
-  return (
-    <button
-      type="button"
-      title={title || ""}
-      onClick={disabled ? undefined : onClick}
-      style={{ ...style, ...(styleProp || {}) }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Bar({ value, maxAbs, height = 10 }) {
-  const v = safeNum(value);
-  const m = Math.max(1e-9, safeNum(maxAbs, 1));
-  const w = (Math.abs(v) / m) * 100;
-  const width = clamp(w, 0, 100);
-
+function Card({ title, right, children, style }) {
   return (
     <div
       style={{
-        height,
-        borderRadius: UI.radiusSm,
-        background: "#EEF2F7",
-        overflow: "hidden",
+        background: UI.card,
+        border: `1px solid ${UI.line}`,
+        borderRadius: UI.radiusLg,
+        boxShadow: UI.shadowSm,
+        padding: 16,
+        ...style,
       }}
     >
-      <div
-        style={{
-          height: "100%",
-          width: `${width}%`,
-          background: barColor(v, m),
-        }}
-      />
-    </div>
-  );
-}
-
-function Card({ title, right, topSlot, children, tone = "default", style }) {
-  const bg = tone === "soft" ? UI.bgSoft : tone === "page" ? UI.bgPage : UI.bg;
-
-  return (
-    <div
-      style={{
-        background: bg,
-        border: UI.border,
-        borderRadius: UI.radius,
-        padding: 14,
-        position: "relative",
-        overflow: "visible",
-        ...(style || {}),
-      }}
-    >
-      {topSlot}
       {(title || right) && (
         <div
           style={{
             display: "flex",
             justifyContent: "space-between",
-            gap: 10,
+            gap: 12,
             alignItems: "center",
-            marginBottom: 10,
+            marginBottom: 12,
           }}
         >
-          <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: UI.text }}>
             {title}
           </div>
           {right}
@@ -351,224 +267,328 @@ function Card({ title, right, topSlot, children, tone = "default", style }) {
   );
 }
 
-/* =========================
- * ✅ 한 줄 요약 스트립 (제목 없음 / 작은 높이)
- * ========================= */
-function InlineMoMSummary({ text }) {
-  if (!text) return null;
+function Pill({ children, tone = "neutral", title, style }) {
+  const t =
+    tone === "blue"
+      ? pickBlue()
+      : tone === "gray"
+      ? pickGray()
+      : tone === "amber"
+      ? { fg: "#92400E", bg: UI.amberBg, bd: "rgba(245,158,11,0.26)" }
+      : tone === "pos"
+      ? pickColor("pos")
+      : tone === "neg"
+      ? pickColor("neg")
+      : pickColor("zero");
+
+  return (
+    <span
+      title={title || ""}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        padding: "6px 10px",
+        borderRadius: UI.radius, // ✅ 각진
+        border: `1px solid ${t.bd}`,
+        background: t.bg,
+        color: t.fg,
+        fontSize: 11,
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+        ...style,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SegButton({ active, children, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        padding: "9px 12px",
+        borderRadius: UI.radiusLg,
+        border: `1px solid ${active ? "rgba(15,23,42,0.22)" : UI.line}`,
+        background: active ? "#0B1220" : "#FFFFFF",
+        color: active ? "#fff" : UI.text,
+        fontSize: 12,
+        fontWeight: 900,
+        cursor: "pointer",
+        boxShadow: active ? UI.shadowSm : "none",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ✅ 기존(단방향) 바 */
+function BarMeter({ value, maxAbs }) {
+  const v = safeNum(value);
+  const m = Math.max(1e-9, safeNum(maxAbs, 1));
+  const w = clamp((Math.abs(v) / m) * 100, 0, 100);
+  const c = pickColor(signTone(v));
 
   return (
     <div
       style={{
-        marginTop: 6,
-        padding: "8px 12px",
-        borderRadius: 6,
-        background: "#FFFFFF",
-        border: "1px solid #E5E7EB",
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        fontSize: 12,
-        lineHeight: 1.6,
-        height: 40,
-        boxSizing: "border-box",
+        height: 10,
+        borderRadius: UI.radius, // ✅ 각진
+        background: "rgba(15,23,42,0.06)",
+        overflow: "hidden",
       }}
-      title={text}
     >
       <div
         style={{
-          width: 3,
-          height: 18,
-          background: "#111827",
-          borderRadius: 2,
-          flexShrink: 0,
+          height: "100%",
+          width: `${w}%`,
+          background: c.fg,
+          opacity: 0.9,
         }}
       />
+    </div>
+  );
+}
 
+/* ✅ KPI 전용(중앙 0) diverging bar */
+function DivergingBar({ value, maxAbs, title }) {
+  const v = safeNum(value);
+  const m = Math.max(1e-9, safeNum(maxAbs, 1));
+  const p = clamp((Math.abs(v) / m) * 50, 0, 50);
+  const tone = pickColor(signTone(v));
+  const isNeg = v < 0;
+  const isZero = Math.abs(v) < 1e-9;
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        height: 10,
+        borderRadius: UI.radius, // ✅ 각진
+        background: "rgba(15,23,42,0.06)",
+        overflow: "hidden",
+      }}
+      title={title || (isZero ? "0" : String(v))}
+    >
       <div
         style={{
-          color: "#374151",
-          fontWeight: 900,
-          whiteSpace: "nowrap",
-          overflow: "hidden",
-          textOverflow: "ellipsis",
-          minWidth: 0,
-          flex: 1,
+          position: "absolute",
+          left: "50%",
+          top: 0,
+          bottom: 0,
+          width: 1,
+          background: "rgba(15,23,42,0.20)",
         }}
-      >
-        {text}
-      </div>
+      />
+      {isNeg && (
+        <div
+          style={{
+            position: "absolute",
+            right: "50%",
+            top: 0,
+            bottom: 0,
+            width: `${p}%`,
+            background: tone.fg,
+            opacity: 0.9,
+          }}
+        />
+      )}
+      {!isNeg && !isZero && (
+        <div
+          style={{
+            position: "absolute",
+            left: "50%",
+            top: 0,
+            bottom: 0,
+            width: `${p}%`,
+            background: tone.fg,
+            opacity: 0.9,
+          }}
+        />
+      )}
     </div>
   );
 }
 
 /* =========================
- * Auto Trace
+ * KPI Strip (4 KPI)
  * ========================= */
-function autoTracePath({ getChildren, getHasNext, startParts, maxDepth = 10 }) {
-  const trace = [
-    {
-      parts: startParts.slice(),
-      label: startParts[startParts.length - 1],
-      value: null,
-    },
-  ];
-  let curParts = startParts.slice();
-
-  for (let step = 0; step < maxDepth; step++) {
-    const children = getChildren(curParts);
-    if (!children || children.length === 0) break;
-
-    const top = children
-      .slice()
-      .sort((a, b) => Math.abs(safeNum(b.diff)) - Math.abs(safeNum(a.diff)))[0];
-    if (!top) break;
-
-    const nextParts = [...curParts, top.name];
-    const node = { parts: nextParts, label: top.name, value: top };
-    trace.push(node);
-
-    if (!getHasNext(nextParts)) break;
-    curParts = nextParts;
-  }
-
-  return trace;
-}
-
-/* =========================
- * ✅ 전월 ↔ 당월 핵심 비교 (가로 4칸, 한눈에)
- * ========================= */
-function MetricCompareStrip({ metrics = [] }) {
-  const isGoodMove = (label, diff) => {
-    const d = safeNum(diff);
-    // 이익/매출 계열: 증가가 Good
-    if (label.includes("이익") || label.includes("매출")) return d >= 0;
-    // 비용 계열: 감소가 Good
-    return d <= 0;
-  };
+function KpiStrip({ items = [] }) {
+  const maxAbsRate = useMemo(() => {
+    const m = Math.max(1, ...items.map((x) => Math.abs(safeNum(x.rate))));
+    return m;
+  }, [items]);
 
   return (
     <div
       style={{
-        border: UI.border,
-        borderRadius: 14,
-        background: "#fff",
-        padding: "14px 16px",
+        background: UI.card,
+        border: `1px solid ${UI.line}`,
+        borderRadius: UI.radiusLg,
+        boxShadow: UI.shadow,
+        padding: 14,
+        marginBottom: 12,
       }}
     >
       <div
         style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "baseline",
-          gap: 10,
-          marginBottom: 10,
-        }}
-      >
-        <div style={{ fontSize: 13, fontWeight: 950, color: UI.text }}>
-          전월 ↔ 당월 핵심 비교
-        </div>
-        <Chip tone="blue">전월 → 당월 · Δ · %</Chip>
-      </div>
-
-      <div
-        style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
-          gap: 12,
+          gridTemplateColumns: "repeat(4, minmax(180px, 1fr))",
+          gap: 10,
+          alignItems: "stretch",
         }}
       >
-        {metrics.map((m, idx) => {
-          const prev = safeNum(m.prev);
-          const cur = safeNum(m.cur);
-          const diff = safeNum(m.diff ?? cur - prev);
-          const rate =
-            typeof m.rate !== "undefined" && m.rate !== null
-              ? safeNum(m.rate)
-              : prev
-              ? (diff / prev) * 100
-              : diff
-              ? 100
-              : 0;
-
-          const good = isGoodMove(m.label, diff);
-          const color = good ? "#16a34a" : "#dc2626";
-          const arrow = diff === 0 ? "–" : diff > 0 ? "▲" : "▼";
+        {items.map((it) => {
+          const tone = pickColor(signTone(it.diff));
+          const rr = safeNum(it.rate);
 
           return (
             <div
-              key={m.key}
+              key={it.key}
               style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 6,
-                paddingRight: idx !== metrics.length - 1 ? 12 : 0,
-                borderRight:
-                  idx !== metrics.length - 1 ? "1px dashed #e5e7eb" : "none",
+                border: `1px solid ${UI.line}`,
+                borderRadius: UI.radiusLg,
+                padding: 12,
+                background: "rgba(15,23,42,0.02)",
                 minWidth: 0,
               }}
             >
               <div
                 style={{
-                  fontSize: 11,
-                  fontWeight: 700,
-                  color: UI.subText,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {m.label}
-              </div>
-
-              <div
-                style={{
-                  fontSize: 20,
-                  fontWeight: 900,
-                  color: UI.text,
-                  lineHeight: "24px",
-                }}
-              >
-                {formatNumber(cur)}
-              </div>
-
-              <div style={{ fontSize: 11, color: "#9ca3af" }}>
-                전월 {formatNumber(prev)}
-              </div>
-
-              <div
-                style={{
                   display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
                   alignItems: "center",
-                  gap: 6,
-                  marginTop: 2,
-                  fontSize: 12,
-                  fontWeight: 900,
-                  color,
                 }}
               >
-                <span>{arrow}</span>
-                <span>{formatNumber(Math.abs(diff))}</span>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 900,
+                    color: UI.text,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                  title={it.label}
+                >
+                  {it.label}
+                </div>
+
                 <span
                   style={{
-                    fontSize: 10,
-                    fontWeight: 700,
-                    color: "#6b7280",
+                    padding: "6px 10px",
+                    borderRadius: UI.radius, // ✅ 각진
+                    border: `1px solid ${tone.bd}`,
+                    background: tone.bg,
+                    color: tone.fg,
+                    fontSize: 12,
+                    fontWeight: 900,
+                    ...UI.mono,
+                    whiteSpace: "nowrap",
                   }}
+                  title="전월 대비 Δ(금액)"
                 >
-                  ({formatRate(rate)})
+                  Δ {formatSignedNumber(it.diff)}
                 </span>
               </div>
 
               <div
                 style={{
-                  marginTop: 4,
-                  fontSize: 10,
-                  color: UI.subText,
-                  fontWeight: 800,
+                  marginTop: 10,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
                 }}
               >
-                {good ? "회사에 이득" : "회사에 손해"}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: UI.sub }}>
+                    전월
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 14,
+                      fontWeight: 900,
+                      color: UI.text,
+                      ...UI.mono,
+                    }}
+                  >
+                    {formatNumber(it.prev)}
+                  </div>
+                </div>
+
+                <div style={{ textAlign: "right", minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: UI.sub }}>
+                    당월
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 14,
+                      fontWeight: 900,
+                      color: UI.text,
+                      ...UI.mono,
+                    }}
+                  >
+                    {formatNumber(it.cur)}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  fontSize: 10,
+                  fontWeight: 800,
+                  color: UI.sub,
+                }}
+              >
+                <span>감소</span>
+                <span style={{ ...UI.mono }}>0</span>
+                <span>증가</span>
+              </div>
+
+              <div style={{ marginTop: 6 }}>
+                <DivergingBar
+                  value={rr}
+                  maxAbs={maxAbsRate}
+                  title={`증감률 ${formatRate(rr)} / Δ ${formatSignedNumber(
+                    it.diff
+                  )}`}
+                />
+              </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 8,
+                  alignItems: "center",
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 800,
+                    color: UI.sub,
+                    ...UI.mono,
+                  }}
+                  title="증감률(%)"
+                >
+                  {formatRate(rr)}
+                </span>
+                <Pill tone="blue" style={{ fontSize: 11 }}>
+                  전월→당월
+                </Pill>
               </div>
             </div>
           );
@@ -579,351 +599,307 @@ function MetricCompareStrip({ metrics = [] }) {
 }
 
 /* =========================
- * ✅ Summary sentence generator (영업이익 강화)
+ * KPI Header
  * ========================= */
-function buildSummarySentenceAdvanced({
+function KpiHeader({
   activeKpi,
-  viewData,
-  driver,
-  getChildren,
-  getHasNext,
+  kpi,
+  topDrivers = [],
+  kpiDiff = 0,
+  activeComponent,
+  onPickDriver,
+  parentSummary,
 }) {
-  const kpiCards = viewData?.kpi_cards || [];
-  const map = new Map();
-  kpiCards.forEach((x) => map.set(String(x.name), x));
-
-  const k = map.get(activeKpi);
-  const kpiDiff = safeNum(k?.diff);
-  const kpiDir = kpiDiff >= 0 ? "증가" : "감소";
-
-  const topDriver =
-    driver?.components
-      ?.slice()
-      ?.sort(
-        (a, b) => Math.abs(safeNum(b.contrib)) - Math.abs(safeNum(a.contrib))
-      )[0] || null;
-
-  const traceLeaf = (rootName) => {
-    if (!rootName) return null;
-    const trace = autoTracePath({
-      getChildren,
-      getHasNext,
-      startParts: [rootName],
-      maxDepth: 12,
-    });
-    if (!trace || trace.length <= 1) return null;
-    const leaf = trace[trace.length - 1];
-    return { trace, leaf };
-  };
-
-  if (activeKpi === "영업이익") {
-    const sales = map.get("매출액");
-    const cogs = map.get("매출원가계");
-    const sga = map.get("판매비와일반관리비");
-
-    const salesDiff = safeNum(sales?.diff);
-    const cogsDiff = safeNum(cogs?.diff);
-    const sgaDiff = safeNum(sga?.diff);
-
-    const salesHelp = salesDiff > 0;
-    const cogsHelp = cogsDiff < 0;
-    const sgaHelp = sgaDiff < 0;
-
-    const salesLeaf = salesHelp ? traceLeaf("매출액") : null;
-    const sgaLeaf = sgaHelp ? traceLeaf("판매비와일반관리비") : null;
-    const cogsLeaf = cogsHelp ? traceLeaf("매출원가계") : null;
-
-    const lines = [];
-    lines.push(
-      `결론: **영업이익이 ${kpiDir}**했습니다 (Δ ${formatSignedNumber(
-        kpiDiff
-      )}).`
-    );
-
-    if (topDriver) {
-      lines.push(
-        `주요 Driver: **${topDriver.component}** (기여 ${formatSignedNumber(
-          safeNum(topDriver.contrib)
-        )}).`
-      );
-    }
-
-    if (salesHelp && salesLeaf?.leaf?.value) {
-      const v = salesLeaf.leaf.value;
-      lines.push(
-        `매출 상세: **${
-          salesLeaf.leaf.label
-        }** 변동이 큼 (Δ ${formatSignedNumber(safeNum(v.diff))}, ${formatRate(
-          safeNum(v.rate)
-        )}).`
-      );
-    } else if (salesDiff !== 0) {
-      lines.push(`매출액 Δ ${formatSignedNumber(salesDiff)}.`);
-    }
-
-    if (sgaHelp && sgaLeaf?.leaf?.value) {
-      const v = sgaLeaf.leaf.value;
-      lines.push(
-        `판관비 상세: **${sgaLeaf.leaf.label}** 영향 (Δ ${formatSignedNumber(
-          safeNum(v.diff)
-        )}, ${formatRate(safeNum(v.rate))}).`
-      );
-    } else if (sgaDiff !== 0) {
-      lines.push(`판관비 Δ ${formatSignedNumber(sgaDiff)}.`);
-    }
-
-    if (cogsHelp && cogsLeaf?.leaf?.value) {
-      const v = cogsLeaf.leaf.value;
-      lines.push(
-        `원가 상세: **${cogsLeaf.leaf.label}** 영향 (Δ ${formatSignedNumber(
-          safeNum(v.diff)
-        )}, ${formatRate(safeNum(v.rate))}).`
-      );
-    }
-
-    return lines.join(" ");
-  }
-
-  if (k) {
-    const drv = topDriver
-      ? `주요 원인: **${topDriver.component}** (기여 ${formatSignedNumber(
-          safeNum(topDriver.contrib)
-        )}).`
-      : `주요 원인(Driver) 데이터 부족.`;
-    return `결론: **${activeKpi}이(가) ${kpiDir}**했습니다 (Δ ${formatSignedNumber(
-      kpiDiff
-    )}). ${drv}`;
-  }
-
-  return `${activeKpi} KPI 정보가 없습니다.`;
-}
-
-/* =========================
- * ✅ Non-operating split helpers
- * ========================= */
-function aggregateRootTotals(flatItems, rootName) {
-  if (!flatItems?.length) return null;
-  let cur = 0;
-  let prev = 0;
-  let diff = 0;
-  let hit = 0;
-
-  for (const it of flatItems) {
-    if (!it?.path) continue;
-    const parts = splitPath(it.path);
-    if (!parts.length) continue;
-    if (parts[0] !== rootName) continue;
-
-    cur += safeNum(it.cur);
-    prev += safeNum(it.prev);
-    diff += safeNum(it.diff);
-    hit += 1;
-  }
-
-  if (!hit) return null;
-  const rate = prev ? (diff / prev) * 100 : diff ? 100 : 0;
-  return { name: rootName, cur, prev, diff, rate, _cnt: hit };
-}
-
-/* =========================
- * ✅ Top10 (세부항목만 + 출처 prefix 표시 + "비율" 기준 정렬)
- * ========================= */
-function buildDetailTop10ByRate(list, { excludeRoots = [], limit = 10 }) {
-  const out = [];
-  for (const raw of list || []) {
-    const path = raw?.path ? String(raw.path) : "";
-    const parts = splitPath(path);
-    if (!parts.length) continue;
-
-    const root = parts[0];
-    if (parts.length <= 1) continue;
-    if (excludeRoots.includes(root)) continue;
-
-    const leaf = parts[parts.length - 1];
-    const prefixParts = parts.slice(0, -1);
-
-    const prefix =
-      prefixParts.length >= 2
-        ? `${prefixParts[0]} > ${prefixParts[1]}`
-        : prefixParts.length === 1
-        ? `${prefixParts[0]}`
-        : "-";
-
-    const diff = safeNum(raw?.diff);
-    const rate = safeNum(raw?.rate);
-
-    out.push({ path, root, leaf, prefix, diff, rate });
-  }
-
-  out.sort((a, b) => {
-    const ar = Math.abs(safeNum(a.rate));
-    const br = Math.abs(safeNum(b.rate));
-    if (br !== ar) return br - ar;
-    return Math.abs(safeNum(b.diff)) - Math.abs(safeNum(a.diff));
-  });
-
-  return out.slice(0, limit);
-}
-
-function Top10Card({ title, items }) {
-  return (
-    <Card title={title} tone="default" right={<Chip tone="blue">TOP 10</Chip>}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {(items || []).map((t, idx) => (
-          <div
-            key={`${t.path}-${idx}`}
-            style={{
-              background: "#fff",
-              border: UI.border,
-              borderRadius: UI.radius,
-              padding: "10px 10px",
-              display: "grid",
-              gridTemplateColumns: "1fr auto",
-              gap: 10,
-              alignItems: "center",
-            }}
-            title={t.path}
-          >
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  minWidth: 0,
-                }}
-              >
-                <Chip tone="neutral" title="세부항목 출처(상위 경로)">
-                  {t.prefix}
-                </Chip>
-                <div
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 950,
-                    color: UI.text,
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {t.leaf}
-                </div>
-              </div>
-              <div style={{ marginTop: 8 }}>
-                <Bar
-                  value={safeNum(t.rate)}
-                  maxAbs={Math.max(1, Math.abs(safeNum(t.rate)))}
-                  height={8}
-                />
-              </div>
-            </div>
-
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 12, fontWeight: 950, color: UI.text }}>
-                {formatRate(safeNum(t.rate))}
-              </div>
-              <div
-                style={{
-                  marginTop: 4,
-                  fontSize: 11,
-                  fontWeight: 900,
-                  color: "#6B7280",
-                }}
-              >
-                Δ {formatSignedNumber(safeNum(t.diff))}
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {(!items || items.length === 0) && (
-          <div style={{ fontSize: 12, color: UI.subText, lineHeight: 1.6 }}>
-            세부항목 Top10이 없습니다. (top_items가 1레벨만 있거나 제외 규칙으로
-            필터링되었을 수 있습니다)
-          </div>
-        )}
-      </div>
-    </Card>
+  const main = kpi || { prev: 0, cur: 0, diff: 0, rate: 0 };
+  const rateTone = pickColor(signTone(main.rate));
+  const maxAbsContrib = Math.max(
+    1,
+    ...topDrivers.map((x) => Math.abs(safeNum(x.contrib)))
   );
-}
 
-/* =========================
- * (기존) MoMSummaryBanner — 이제 사용 안 함 (남겨도 OK)
- * ========================= */
-function MoMSummaryBanner({ text }) {
   return (
     <div
       style={{
-        position: "relative",
-        border: "1px solid #E5E7EB",
-        borderRadius: UI.radius,
-        background: "#FFFFFF",
-        padding: "10px 12px",
-        overflow: "hidden",
+        background: UI.card,
+        border: `1px solid ${UI.line}`,
+        borderRadius: UI.radiusLg,
+        boxShadow: UI.shadow,
+        padding: 16,
       }}
     >
       <div
         style={{
-          position: "absolute",
-          left: 0,
-          top: 0,
-          bottom: 0,
-          width: 3,
-          background: "#111827",
+          display: "flex",
+          justifyContent: "space-between",
+          gap: 14,
+          alignItems: "stretch",
+          flexWrap: "wrap",
         }}
-      />
-
-      <div style={{ paddingLeft: 8 }}>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            flexWrap: "wrap",
-          }}
-        >
-          <span
-            style={{
-              background: "#111827",
-              color: "#fff",
-              border: "1px solid #111827",
-              fontSize: 10,
-              padding: "3px 8px",
-              borderRadius: UI.radiusSm,
-              fontWeight: 900,
-              whiteSpace: "nowrap",
-            }}
-            title="월 대비 손익 변동 요약"
-          >
-            MoM 요약
-          </span>
+      >
+        {/* LEFT */}
+        <div style={{ minWidth: 280, flex: "0 0 auto" }}>
+          <div style={{ fontSize: 18, fontWeight: 950, color: UI.text }}>
+            {activeKpi} 변화 핵심
+          </div>
 
           <div
             style={{
-              fontSize: 12,
-              fontWeight: 950,
-              color: UI.text,
-              whiteSpace: "nowrap",
+              marginTop: 10,
+              borderRadius: UI.radiusLg,
+              border: `1px solid ${rateTone.bd}`,
+              background: rateTone.bg,
+              padding: 14,
             }}
           >
-            전월 대비 손익 변동
+            <div style={{ fontSize: 11, fontWeight: 900, color: UI.sub }}>
+              전월 대비 증감률
+            </div>
+
+            <div
+              style={{
+                marginTop: 6,
+                display: "flex",
+                alignItems: "baseline",
+                gap: 10,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 28,
+                  fontWeight: 950,
+                  color: rateTone.fg,
+                  letterSpacing: "-0.02em",
+                  ...UI.mono,
+                }}
+              >
+                {formatRate(main.rate)}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 900, color: UI.sub }}>
+                (Δ {formatSignedNumber(main.diff)})
+              </span>
+            </div>
+
+            <div
+              style={{
+                marginTop: 10,
+                display: "flex",
+                gap: 12,
+                flexWrap: "wrap",
+                color: UI.sub,
+                fontSize: 12,
+                fontWeight: 800,
+              }}
+            >
+              <span style={{ ...UI.mono }}>전월 {formatNumber(main.prev)}</span>
+              <span>→</span>
+              <span style={{ ...UI.mono }}>당월 {formatNumber(main.cur)}</span>
+            </div>
           </div>
+
+          <div style={{ marginTop: 10 }}>
+            <Pill tone={signTone(kpiDiff)} title="KPI 증감(금액)">
+              KPI Δ {formatSignedNumber(kpiDiff)}{" "}
+              <span style={{ color: UI.sub, fontWeight: 800 }}>(보조)</span>
+            </Pill>
+          </div>
+
+          {parentSummary && (
+            <div
+              style={{
+                marginTop: 12,
+                borderRadius: UI.radiusLg,
+                border: `1px solid ${UI.line}`,
+                background: "rgba(15,23,42,0.02)",
+                padding: 14,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 900, color: UI.text }}>
+                  현재 레벨 요약
+                </div>
+                <Pill tone={signTone(parentSummary.diff)}>
+                  Δ {formatSignedNumber(parentSummary.diff)} (
+                  {formatRate(parentSummary.rate)})
+                </Pill>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 12,
+                  color: UI.sub,
+                  fontWeight: 800,
+                  ...UI.mono,
+                }}
+              >
+                전월 {formatNumber(parentSummary.prev)} → 당월{" "}
+                {formatNumber(parentSummary.cur)}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 6,
+                  fontSize: 11,
+                  color: "rgba(100,116,139,0.95)",
+                  fontWeight: 800,
+                }}
+              >
+                Impact = “이 레벨 증감(Δ) 중 해당 항목이 차지하는 비중”
+              </div>
+            </div>
+          )}
         </div>
 
-        <div
-          style={{
-            marginTop: 6,
-            fontSize: 12,
-            color: UI.subText,
-            lineHeight: 1.55,
-            display: "-webkit-box",
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: "vertical",
-            overflow: "hidden",
-          }}
-          title={text || ""}
-        >
-          {text}
+        {/* RIGHT: TOP3 */}
+        <div style={{ minWidth: 340, flex: 1 }}>
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 900,
+              color: UI.sub,
+              marginBottom: 10,
+            }}
+          >
+            변화 요인 TOP 3 (클릭하면 Drill-down 시작)
+          </div>
+
+          {topDrivers.length === 0 ? (
+            <div style={{ fontSize: 12, color: UI.sub }}>
+              Driver 데이터가 없습니다.
+            </div>
+          ) : (
+            <div
+              style={{ display: "grid", gridTemplateColumns: "1fr", gap: 10 }}
+            >
+              {topDrivers.map((d, idx) => {
+                const t = pickColor(signTone(d.contrib));
+                const isActive = activeComponent === d.component;
+
+                return (
+                  <div
+                    key={d.component}
+                    onClick={() => onPickDriver?.(d.component)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ")
+                        onPickDriver?.(d.component);
+                    }}
+                    style={{
+                      cursor: "pointer",
+                      border: `1px solid ${
+                        isActive ? "rgba(15,23,42,0.22)" : UI.line
+                      }`,
+                      borderRadius: UI.radiusLg,
+                      padding: 14,
+                      background: isActive ? "#FFFFFF" : "rgba(15,23,42,0.02)",
+                      boxShadow: isActive ? UI.shadowSm : "none",
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      gap: 12,
+                      alignItems: "center",
+                    }}
+                    title="클릭하면 Drill-down 시작"
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          fontWeight: 900,
+                          color: UI.text,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {idx + 1}. {d.component}
+                      </div>
+
+                      <div style={{ marginTop: 8 }}>
+                        <BarMeter value={d.contrib} maxAbs={maxAbsContrib} />
+                      </div>
+
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: UI.radius,
+                            border: `1px solid ${t.bd}`,
+                            background: t.bg,
+                            color: t.fg,
+                            fontSize: 13,
+                            fontWeight: 900,
+                            ...UI.mono,
+                          }}
+                          title="기여도(Δ에 기여한 금액)"
+                        >
+                          기여 {formatSignedNumber(d.contrib)}
+                        </span>
+
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontWeight: 800,
+                            color: UI.sub,
+                            ...UI.mono,
+                          }}
+                        >
+                          (Δ {formatSignedNumber(safeNum(d.diff))} /{" "}
+                          {formatRate(
+                            safeNum(d.prev)
+                              ? (safeNum(d.diff) / safeNum(d.prev)) * 100
+                              : safeNum(d.diff)
+                              ? 100
+                              : 0
+                          )}
+                          )
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                        alignItems: "flex-end",
+                      }}
+                    >
+                      <Pill tone={signTone(d.contrib)} style={{ fontSize: 12 }}>
+                        TOP {idx + 1}
+                      </Pill>
+                      <span
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: UI.radius,
+                          background: t.fg,
+                          opacity: 0.9,
+                        }}
+                      />
+                      {isActive && <Pill tone="blue">선택됨</Pill>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -931,11 +907,35 @@ function MoMSummaryBanner({ text }) {
 }
 
 /* =========================
+ * Backend helpers
+ * ========================= */
+function aggregateRootTotals(flatItems, rootName) {
+  if (!flatItems?.length) return null;
+  let cur = 0,
+    prev = 0,
+    diff = 0,
+    hit = 0;
+
+  for (const it of flatItems) {
+    if (!it?.path) continue;
+    const parts = splitPath(it.path);
+    if (!parts.length) continue;
+    if (parts[0] !== rootName) continue;
+    cur += safeNum(it.cur);
+    prev += safeNum(it.prev);
+    diff += safeNum(it.diff);
+    hit += 1;
+  }
+  if (!hit) return null;
+  const rate = prev ? (diff / prev) * 100 : diff ? 100 : 0;
+  return { name: rootName, cur, prev, diff, rate, _cnt: hit };
+}
+
+/* =========================
  * Main
  * ========================= */
-export default function PlReportCauseTab() {
-  const [periods, setPeriods] = useState([]);
-  const [selectedYm, setSelectedYm] = useState(null); // "YYYY-MM"
+export default function PlReportCauseTab({ selectedYm: selectedYmProp }) {
+  const [selectedYm, setSelectedYm] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [causeData, setCauseData] = useState(null);
@@ -943,22 +943,22 @@ export default function PlReportCauseTab() {
   const [activeKpi, setActiveKpi] = useState("영업이익");
   const [drillStack, setDrillStack] = useState([]);
   const [activeComponent, setActiveComponent] = useState(null);
-  const [autoTrace, setAutoTrace] = useState(null);
 
-  const [showAllChildren, setShowAllChildren] = useState(false);
   const [childFilter, setChildFilter] = useState("");
   const [sortMode, setSortMode] = useState("absdiff");
 
-  /* periods */
   useEffect(() => {
+    if (selectedYmProp) setSelectedYm(selectedYmProp);
+  }, [selectedYmProp]);
+
+  useEffect(() => {
+    if (selectedYmProp) return;
     const fetchPeriods = async () => {
       try {
         const res = await fetch("/api/pl-cause/periods");
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         const list = data.periods || [];
-        setPeriods(list);
-
         if (list.length > 0) {
           const last = list[list.length - 1];
           const ym = `${last.year}-${String(last.month).padStart(2, "0")}`;
@@ -969,29 +969,10 @@ export default function PlReportCauseTab() {
       }
     };
     fetchPeriods();
-  }, []);
+  }, [selectedYmProp]);
 
-  const ymOptions = useMemo(() => {
-    const list = (periods || []).map((p) => ({
-      ym: `${p.year}-${String(p.month).padStart(2, "0")}`,
-      year: p.year,
-      month: p.month,
-    }));
-    const seen = new Set();
-    const out = [];
-    for (const x of list) {
-      if (seen.has(x.ym)) continue;
-      seen.add(x.ym);
-      out.push(x);
-    }
-    out.sort((a, b) => (a.ym > b.ym ? 1 : a.ym < b.ym ? -1 : 0));
-    return out;
-  }, [periods]);
-
-  /* cause fetch */
   useEffect(() => {
     if (!selectedYm) return;
-
     const [yStr, mStr] = String(selectedYm).split("-");
     const y = Number(yStr);
     const m = Number(mStr);
@@ -1012,8 +993,6 @@ export default function PlReportCauseTab() {
 
         setActiveComponent(null);
         setDrillStack([]);
-        setAutoTrace(null);
-        setShowAllChildren(false);
         setChildFilter("");
         setSortMode("absdiff");
       } catch (err) {
@@ -1027,7 +1006,6 @@ export default function PlReportCauseTab() {
   }, [selectedYm]);
 
   const viewData = causeData;
-
   const kpiCards = viewData?.kpi_cards || [];
   const drivers = viewData?.drivers || {};
   const driver = drivers?.[activeKpi] || null;
@@ -1041,12 +1019,80 @@ export default function PlReportCauseTab() {
       .filter((x) => x.path && x.path.length > 0);
   }, [viewData]);
 
-  const driverMaxAbs = useMemo(() => {
-    if (!driver?.components?.length) return 0;
-    return Math.max(
-      ...driver.components.map((c) => Math.abs(safeNum(c.contrib)))
+  const kpiMap = useMemo(() => {
+    const map = new Map();
+    (kpiCards || []).forEach((k) => map.set(String(k.name), k));
+    return map;
+  }, [kpiCards]);
+
+  const pickKpi = (name) => {
+    const k = kpiMap.get(name);
+    const cur = safeNum(k?.cur);
+    const prev = safeNum(k?.prev);
+    const diff = safeNum(k?.diff ?? cur - prev);
+    const rate =
+      typeof k?.rate !== "undefined" && k?.rate !== null
+        ? safeNum(k.rate)
+        : prev
+        ? (diff / prev) * 100
+        : diff
+        ? 100
+        : 0;
+    return { name, cur, prev, diff, rate };
+  };
+
+  const kpi4 = useMemo(() => {
+    const a = pickKpi("매출액");
+    const op = pickKpi("영업이익");
+    const ni = pickKpi("당기순이익");
+    const oeRaw = kpiMap.has("영업비용")
+      ? pickKpi("영업비용")
+      : pickKpi("판매비와일반관리비");
+    const oe = { ...oeRaw, name: "영업비용" };
+
+    return [
+      { key: "sales", label: "매출액", ...a },
+      { key: "op", label: "영업이익", ...op },
+      { key: "ni", label: "당기순이익", ...ni },
+      { key: "oe", label: "영업비용", ...oe },
+    ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kpiMap]);
+
+  const heroKpi = useMemo(() => pickKpi(activeKpi), [activeKpi, kpiMap]); // eslint-disable-line
+
+  const topDrivers = useMemo(() => {
+    const list = (driver?.components || []).slice();
+    list.sort(
+      (a, b) => Math.abs(safeNum(b.contrib)) - Math.abs(safeNum(a.contrib))
     );
+    return list.slice(0, 3);
   }, [driver]);
+
+  const onPickDriver = (component) => {
+    setActiveComponent(component);
+    setDrillStack([
+      { key: joinPath([component]), label: component, parts: [component] },
+    ]);
+    setChildFilter("");
+    setSortMode("absdiff");
+  };
+
+  useEffect(() => {
+    if (!driver?.components?.length) {
+      setActiveComponent(null);
+      setDrillStack([]);
+      return;
+    }
+    const top = driver.components
+      .slice()
+      .sort(
+        (a, b) => Math.abs(safeNum(b.contrib)) - Math.abs(safeNum(a.contrib))
+      )[0];
+    if (!top) return;
+    onPickDriver(top.component);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeKpi, driver]);
 
   const currentDrill = drillStack.length
     ? drillStack[drillStack.length - 1]
@@ -1087,11 +1133,9 @@ export default function PlReportCauseTab() {
 
         const a = aggregateRootTotals(flatItems, "영업외수익");
         const b = aggregateRootTotals(flatItems, "영업외비용");
-
         const out = [];
         if (a) out.push(a);
         if (b) out.push(b);
-
         if (!out.length) {
           return ["영업외수익", "영업외비용"].map((name) => ({
             name,
@@ -1101,7 +1145,6 @@ export default function PlReportCauseTab() {
             rate: 0,
           }));
         }
-
         out.sort(
           (x, y) => Math.abs(safeNum(y.diff)) - Math.abs(safeNum(x.diff))
         );
@@ -1169,34 +1212,6 @@ export default function PlReportCauseTab() {
     return Math.max(...list.map((x) => Math.abs(safeNum(x.diff))));
   }, [rawCurrentDrillList]);
 
-  useEffect(() => {
-    if (!driver?.components?.length) {
-      setAutoTrace(null);
-      setActiveComponent(null);
-      setDrillStack([]);
-      return;
-    }
-    const top = driver.components
-      .slice()
-      .sort(
-        (a, b) => Math.abs(safeNum(b.contrib)) - Math.abs(safeNum(a.contrib))
-      )[0];
-    if (!top) return;
-
-    setAutoTrace(null);
-    setActiveComponent(top.component);
-    setDrillStack([
-      {
-        key: joinPath([top.component]),
-        label: top.component,
-        parts: [top.component],
-      },
-    ]);
-    setShowAllChildren(false);
-    setChildFilter("");
-    setSortMode("absdiff");
-  }, [activeKpi, driver]);
-
   const expectedChildren = useMemo(() => {
     if (!currentDrill) return [];
     return PL_TREE[currentDrill.label] || [];
@@ -1206,6 +1221,7 @@ export default function PlReportCauseTab() {
     () => rawCurrentDrillList.map((x) => x.name),
     [rawCurrentDrillList]
   );
+
   const missingChildren = useMemo(() => {
     const set = new Set(availableChildNames);
     return expectedChildren.filter((n) => !set.has(n));
@@ -1225,991 +1241,348 @@ export default function PlReportCauseTab() {
       ? list.filter((x) => String(x.name).toLowerCase().includes(q))
       : list;
 
-    const sorted = filtered.slice().sort((a, b) => {
+    return filtered.slice().sort((a, b) => {
       if (sortMode === "impact")
         return Math.abs(safeNum(b.impact)) - Math.abs(safeNum(a.impact));
       if (sortMode === "rate")
         return Math.abs(safeNum(b.rate)) - Math.abs(safeNum(a.rate));
       return Math.abs(safeNum(b.diff)) - Math.abs(safeNum(a.diff));
     });
+  }, [rawCurrentDrillList, parentSummary, childFilter, sortMode]);
 
-    if (showAllChildren) return sorted;
-    return sorted.slice(0, 8);
-  }, [
-    rawCurrentDrillList,
-    parentSummary,
-    childFilter,
-    showAllChildren,
-    sortMode,
-  ]);
-
-  const runAutoTrace = () => {
-    if (!drillStack.length) return;
-    const startParts = drillStack[0]?.parts || null;
-    if (!startParts || !startParts.length) return;
-
-    const trace = autoTracePath({
-      getChildren,
-      getHasNext,
-      startParts,
-      maxDepth: 12,
-    });
-    setAutoTrace(trace);
-    setDrillStack(
-      trace.map((t) => ({
-        key: joinPath(t.parts),
-        label: t.label,
-        parts: t.parts,
-      }))
-    );
-  };
-
-  const showFatal = !periods.length && !!error;
-
-  const kpiTabs = ["매출총이익", "영업이익", "당기순이익"];
-  const topKpiNames = [
-    "매출액",
-    "매출총이익",
-    "영업이익",
-    "당기순이익",
-    "매출원가계",
-    "판매비와일반관리비",
-  ];
-  const excludeTop10Roots = [
-    ...topKpiNames,
-    "영업외손익",
-    "영업외수익",
-    "영업외비용",
-  ];
-
-  const kpiMap = useMemo(() => {
-    const map = new Map();
-    (kpiCards || []).forEach((k) => map.set(String(k.name), k));
-    return map;
-  }, [kpiCards]);
-
-  const pickKpi = (name) => {
-    const k = kpiMap.get(name);
-    const cur = safeNum(k?.cur);
-    const prev = safeNum(k?.prev);
-    const diff = safeNum(k?.diff ?? cur - prev);
-    const rate =
-      typeof k?.rate !== "undefined" && k?.rate !== null
-        ? safeNum(k.rate)
-        : prev
-        ? (diff / prev) * 100
-        : diff
-        ? 100
-        : 0;
-    return { name, cur, prev, diff, rate };
-  };
-
-  const topCompareMetrics = useMemo(() => {
-    const sales = pickKpi("매출액");
-    const cogs = pickKpi("매출원가계");
-    const sga = pickKpi("판매비와일반관리비");
-    const net = pickKpi("당기순이익");
-
-    const opCostPrev = safeNum(cogs.prev) + safeNum(sga.prev);
-    const opCostCur = safeNum(cogs.cur) + safeNum(sga.cur);
-    const opCostDiff = opCostCur - opCostPrev;
-    const opCostRate = opCostPrev
-      ? (opCostDiff / opCostPrev) * 100
-      : opCostDiff
-      ? 100
-      : 0;
-
-    const opProfitPrev = safeNum(sales.prev) - opCostPrev;
-    const opProfitCur = safeNum(sales.cur) - opCostCur;
-    const opProfitDiff = opProfitCur - opProfitPrev;
-    const opProfitRate = opProfitPrev
-      ? (opProfitDiff / opProfitPrev) * 100
-      : opProfitDiff
-      ? 100
-      : 0;
-
-    return [
-      { key: "매출액", label: "매출액", ...sales },
-      {
-        key: "영업비용",
-        label: "영업비용",
-        prev: opCostPrev,
-        cur: opCostCur,
-        diff: opCostDiff,
-        rate: opCostRate,
-      },
-      {
-        key: "영업이익",
-        label: "영업이익",
-        prev: opProfitPrev,
-        cur: opProfitCur,
-        diff: opProfitDiff,
-        rate: opProfitRate,
-      },
-      { key: "당기순이익", label: "당기순이익", ...net },
-    ];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kpiMap]);
-
-  const jumpToLevel = (idx) => {
-    if (idx < 0) return;
-    setAutoTrace(null);
-    setDrillStack(drillStack.slice(0, idx + 1));
-    setShowAllChildren(false);
-    setChildFilter("");
-    setSortMode("absdiff");
-  };
-
-  const summarySentence = useMemo(() => {
-    if (!viewData) return "";
-    return buildSummarySentenceAdvanced({
-      activeKpi,
-      viewData,
-      driver,
-      getChildren,
-      getHasNext,
-    });
-  }, [activeKpi, viewData, driver, getChildren, getHasNext]);
-
-  const top10ByRate = useMemo(() => {
-    const src = viewData?.top_items || [];
-    return buildDetailTop10ByRate(src, {
-      excludeRoots: excludeTop10Roots,
-      limit: 10,
-    });
-  }, [viewData, excludeTop10Roots]);
+  const kpiTabs = ["영업이익", "당기순이익"];
 
   return (
-    <div style={{ width: "100%", background: UI.bgPage, padding: 12 }}>
-      {showFatal && (
-        <div style={{ color: "#ef4444", fontWeight: 900 }}>{error}</div>
+    <div style={{ width: "100%", background: UI.bg, padding: 14 }}>
+      {!loading && !error && viewData && <KpiStrip items={kpi4} />}
+
+      <div
+        style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}
+      >
+        {kpiTabs.map((k) => (
+          <SegButton
+            key={k}
+            active={activeKpi === k}
+            onClick={() => setActiveKpi(k)}
+          >
+            {k}
+          </SegButton>
+        ))}
+      </div>
+
+      {loading && (
+        <div style={{ fontSize: 12, color: UI.sub, fontWeight: 800 }}>
+          불러오는 중...
+        </div>
+      )}
+      {error && !loading && (
+        <div style={{ fontSize: 12, color: UI.bad, fontWeight: 900 }}>
+          {error}
+        </div>
       )}
 
-      {!showFatal && (
+      {!loading && !error && viewData && (
         <>
-          {loading && (
-            <div style={{ fontSize: 12, color: UI.subText, marginBottom: 10 }}>
-              불러오는 중...
-            </div>
-          )}
-          {error && !loading && (
-            <div
-              style={{ color: "#ef4444", fontWeight: 900, marginBottom: 10 }}
-            >
-              {error}
-            </div>
-          )}
+          <div style={{ marginBottom: 12 }}>
+            <KpiHeader
+              activeKpi={activeKpi}
+              kpi={heroKpi}
+              topDrivers={topDrivers}
+              kpiDiff={safeNum(driver?.kpi_diff)}
+              activeComponent={activeComponent}
+              onPickDriver={onPickDriver}
+              parentSummary={parentSummary}
+            />
+          </div>
 
-          {!loading && !error && viewData && (
-            <>
-              {/* ✅ 제일 위: 전월 대비 핵심 지표 (한눈에) */}
-              <div style={{ marginBottom: 8 }}>
-                <MetricCompareStrip metrics={topCompareMetrics} />
+          <Card
+            title={
+              drillStack.length
+                ? `Drill-down — ${drillStack[drillStack.length - 1].label}`
+                : "Drill-down"
+            }
+          >
+            {!drillStack.length ? (
+              <div style={{ fontSize: 12, color: UI.sub, lineHeight: 1.7 }}>
+                상단의 <b style={{ color: UI.text }}>변화 요인 TOP3</b>를
+                클릭하면, 해당 항목부터{" "}
+                <b style={{ color: UI.text }}>전월→당월 변화</b>를 드릴다운으로
+                추적합니다.
               </div>
-
-              {/* ✅ 바로 아래: AI 결산 상태 요약 (제목/카드 없이 한 줄 스트립) */}
-              <div style={{ marginBottom: 12 }}>
-                <InlineMoMSummary text={summarySentence} />
+            ) : rawCurrentDrillList.length === 0 ? (
+              <div style={{ fontSize: 12, color: UI.sub, lineHeight: 1.7 }}>
+                이 레벨에서 하위 데이터가 없습니다. 아래 “누락 가능”을
+                확인하세요.
               </div>
-
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 420px",
-                  gap: 12,
-                  alignItems: "start",
-                }}
-              >
-                {/* LEFT */}
+            ) : (
+              <>
+                {/* Controls */}
                 <div
-                  style={{ display: "flex", flexDirection: "column", gap: 12 }}
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    marginBottom: 10,
+                  }}
+                >
+                  <input
+                    value={childFilter}
+                    onChange={(e) => setChildFilter(e.target.value)}
+                    placeholder="항목 검색"
+                    style={{
+                      flex: 1,
+                      minWidth: 220,
+                      padding: "10px 12px",
+                      borderRadius: UI.radiusLg,
+                      border: `1px solid ${UI.line}`,
+                      background: "#fff",
+                      outline: "none",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      color: UI.text,
+                      boxShadow: "inset 0 1px 0 rgba(15,23,42,0.03)",
+                    }}
+                  />
+
+                  <select
+                    value={sortMode}
+                    onChange={(e) => setSortMode(e.target.value)}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: UI.radiusLg,
+                      border: `1px solid ${UI.line}`,
+                      background: "#fff",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      color: UI.text,
+                      outline: "none",
+                    }}
+                  >
+                    <option value="absdiff">증감액</option>
+                    <option value="impact">Impact</option>
+                    <option value="rate">증감률</option>
+                  </select>
+                </div>
+
+                {/* Table */}
+                <div
+                  style={{
+                    border: `1px solid ${UI.line}`,
+                    borderRadius: UI.radiusLg,
+                    overflow: "hidden",
+                    background: "#fff",
+                  }}
                 >
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1.05fr 0.95fr",
-                      gap: 12,
+                      gridTemplateColumns:
+                        "1.2fr 0.7fr 0.7fr 0.9fr 0.7fr 0.6fr",
+                      background: "rgba(15,23,42,0.03)",
+                      padding: "10px 12px",
+                      fontSize: 11,
+                      fontWeight: 900,
+                      color: UI.sub,
                     }}
                   >
-                    {/* Drivers */}
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: 6,
-                      }}
-                    >
-                      <div
-                        style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-                      >
-                        {kpiTabs.map((k) => (
-                          <button
-                            key={k}
-                            type="button"
-                            onClick={() => setActiveKpi(k)}
-                            style={{
-                              fontSize: 10,
-                              padding: "3px 8px",
-                              borderRadius: UI.radiusSm,
-                              fontWeight: 950,
-                              cursor: "pointer",
-                              border:
-                                activeKpi === k
-                                  ? "1px solid #111827"
-                                  : "1px solid #E5E7EB",
-                              background:
-                                activeKpi === k ? "#111827" : "#F3F4F6",
-                              color: activeKpi === k ? "#fff" : "#374151",
-                              whiteSpace: "nowrap",
-                            }}
-                            title="원인 분석 KPI 선택"
-                          >
-                            {k}
-                          </button>
-                        ))}
-                      </div>
-
-                      <Card
-                        title={
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 6,
-                            }}
-                          >
-                            <div
-                              style={{
-                                fontSize: 13,
-                                fontWeight: 950,
-                                color: UI.text,
-                              }}
-                            >
-                              {activeKpi} 변화 요인 (Driver)
-                            </div>
-                          </div>
-                        }
-                        right={
-                          driver ? (
-                            <Chip tone="neutral">
-                              KPI Δ{" "}
-                              {formatSignedNumber(safeNum(driver.kpi_diff))}
-                            </Chip>
-                          ) : null
-                        }
-                      >
-                        {!driver ? (
-                          <div style={{ fontSize: 12, color: UI.subText }}>
-                            드라이버 없음
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 8,
-                            }}
-                          >
-                            {driver.components.map((c) => {
-                              const isActive = activeComponent === c.component;
-                              const prev = safeNum(c.prev);
-                              const diff = safeNum(c.diff);
-                              const rate = prev
-                                ? (diff / prev) * 100
-                                : diff
-                                ? 100
-                                : 0;
-
-                              return (
-                                <div
-                                  key={c.component}
-                                  onClick={() => {
-                                    setAutoTrace(null);
-                                    setActiveComponent(c.component);
-                                    setDrillStack([
-                                      {
-                                        key: joinPath([c.component]),
-                                        label: c.component,
-                                        parts: [c.component],
-                                      },
-                                    ]);
-                                    setShowAllChildren(false);
-                                    setChildFilter("");
-                                    setSortMode("absdiff");
-                                  }}
-                                  style={{
-                                    padding: 12,
-                                    borderRadius: UI.radius,
-                                    border: isActive
-                                      ? "1px solid #111827"
-                                      : UI.border,
-                                    background: "#fff",
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      alignItems: "baseline",
-                                      gap: 10,
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        fontSize: 12,
-                                        fontWeight: 950,
-                                        minWidth: 0,
-                                        color: UI.text,
-                                      }}
-                                    >
-                                      <span
-                                        style={{
-                                          whiteSpace: "nowrap",
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                        }}
-                                      >
-                                        {c.component}
-                                      </span>
-                                      <span
-                                        style={{
-                                          marginLeft: 8,
-                                          fontSize: 11,
-                                          color: UI.subText,
-                                        }}
-                                      >
-                                        (기여{" "}
-                                        {formatSignedNumber(safeNum(c.contrib))}
-                                        )
-                                      </span>
-                                    </div>
-                                    <Chip
-                                      tone={
-                                        toneForValue(c.contrib) === "pos"
-                                          ? "red"
-                                          : toneForValue(c.contrib) === "neg"
-                                          ? "green"
-                                          : "neutral"
-                                      }
-                                    >
-                                      {formatSignedNumber(safeNum(c.contrib))}
-                                    </Chip>
-                                  </div>
-
-                                  <div style={{ marginTop: 8 }}>
-                                    <Bar
-                                      value={safeNum(c.contrib)}
-                                      maxAbs={driverMaxAbs}
-                                      height={10}
-                                    />
-                                  </div>
-
-                                  <div
-                                    style={{
-                                      marginTop: 8,
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      fontSize: 11,
-                                      color: UI.subText,
-                                    }}
-                                  >
-                                    <span>
-                                      {formatNumber(prev)} →{" "}
-                                      {formatNumber(safeNum(c.cur))}
-                                    </span>
-                                    <span
-                                      style={{
-                                        fontWeight: 950,
-                                        color: UI.text,
-                                      }}
-                                    >
-                                      Δ {formatSignedNumber(diff)} (
-                                      {formatRate(rate)})
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </Card>
-                    </div>
-
-                    {/* Drilldown */}
-                    <Card
-                      title={
-                        drillStack.length
-                          ? `변동 원인 상세 (Drill-down) — ${
-                              drillStack[drillStack.length - 1].label
-                            }`
-                          : "변동 원인 상세 (Drill-down)"
-                      }
-                      right={
-                        drillStack.length ? (
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              flexWrap: "wrap",
-                              justifyContent: "flex-end",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Chip
-                              tone={
-                                backendDrilldowns?.[
-                                  drillStack[drillStack.length - 1].label
-                                ]?.length
-                                  ? "blue"
-                                  : flatItems.length
-                                  ? "green"
-                                  : "amber"
-                              }
-                            >
-                              source:{" "}
-                              {backendDrilldowns?.[
-                                drillStack[drillStack.length - 1].label
-                              ]?.length
-                                ? "backend"
-                                : flatItems.length
-                                ? "path"
-                                : "-"}
-                            </Chip>
-
-                            <Button
-                              tone="ghost"
-                              disabled={drillStack.length <= 1}
-                              onClick={() => {
-                                setAutoTrace(null);
-                                setDrillStack(drillStack.slice(0, -1));
-                                setShowAllChildren(false);
-                                setChildFilter("");
-                                setSortMode("absdiff");
-                              }}
-                            >
-                              ◀
-                            </Button>
-
-                            <Button
-                              tone="outline"
-                              disabled={!drillStack.length}
-                              onClick={runAutoTrace}
-                            >
-                              Auto Trace
-                            </Button>
-                          </div>
-                        ) : (
-                          <Chip tone="neutral">좌측 Driver 클릭</Chip>
-                        )
-                      }
-                    >
-                      {/* (이 아래는 네 코드 그대로) */}
-                      {!drillStack.length ? (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: UI.subText,
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          Driver를 클릭하면 하위 항목이 뜹니다.
-                        </div>
-                      ) : rawCurrentDrillList.length === 0 ? (
-                        <div
-                          style={{
-                            fontSize: 12,
-                            color: UI.subText,
-                            lineHeight: 1.6,
-                          }}
-                        >
-                          이 레벨에서 하위 데이터가 없습니다(leaf 또는 누락).
-                          아래 Missing을 확인하세요.
-                        </div>
-                      ) : (
-                        <div
-                          style={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: 10,
-                          }}
-                        >
-                          {/* Breadcrumb */}
-                          <div
-                            style={{
-                              display: "flex",
-                              flexWrap: "wrap",
-                              gap: 6,
-                            }}
-                          >
-                            {drillStack.map((d, idx) => (
-                              <Button
-                                key={d.key}
-                                tone={
-                                  idx === drillStack.length - 1
-                                    ? "solid"
-                                    : "ghost"
-                                }
-                                onClick={() => jumpToLevel(idx)}
-                                style={{ padding: "7px 10px", fontSize: 11 }}
-                                title="해당 단계로 이동"
-                              >
-                                {idx === 0 ? d.label : `› ${d.label}`}
-                              </Button>
-                            ))}
-                          </div>
-
-                          {/* Parent 요약 */}
-                          {parentSummary && (
-                            <div
-                              style={{
-                                border: UI.border,
-                                borderRadius: UI.radius,
-                                background: "#fff",
-                                padding: 12,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  gap: 10,
-                                  alignItems: "center",
-                                }}
-                              >
-                                <div
-                                  style={{ fontWeight: 950, color: UI.text }}
-                                >
-                                  Parent 요약
-                                </div>
-                                <Chip
-                                  tone={
-                                    safeNum(parentSummary.diff) >= 0
-                                      ? "red"
-                                      : "green"
-                                  }
-                                >
-                                  Δ {formatSignedNumber(parentSummary.diff)} (
-                                  {formatRate(parentSummary.rate)})
-                                </Chip>
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 8,
-                                  fontSize: 12,
-                                  color: UI.subText,
-                                  display: "flex",
-                                  gap: 8,
-                                  flexWrap: "wrap",
-                                }}
-                              >
-                                <span>
-                                  전월 {formatNumber(parentSummary.prev)}
-                                </span>
-                                <span>→</span>
-                                <span>
-                                  당월 {formatNumber(parentSummary.cur)}
-                                </span>
-                                <span style={{ color: "#9CA3AF" }}>|</span>
-                                <span
-                                  style={{ fontWeight: 900, color: UI.text }}
-                                >
-                                  Impact로 “누가 움직였는지” 확인
-                                </span>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* AutoTrace */}
-                          {autoTrace && autoTrace.length > 1 && (
-                            <div
-                              style={{
-                                border: "1px dashed #CBD5E1",
-                                borderRadius: UI.radius,
-                                background: UI.bgSoft,
-                                padding: 12,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  justifyContent: "space-between",
-                                  alignItems: "center",
-                                  gap: 10,
-                                }}
-                              >
-                                <div
-                                  style={{ fontWeight: 950, color: UI.text }}
-                                >
-                                  원인 트리 (자동 경로)
-                                </div>
-                                <Chip tone="blue">leaf</Chip>
-                              </div>
-                              <div
-                                style={{
-                                  marginTop: 10,
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 6,
-                                  fontSize: 12,
-                                }}
-                              >
-                                {autoTrace.map((t, idx) => {
-                                  const v = t.value;
-                                  return (
-                                    <div
-                                      key={joinPath(t.parts)}
-                                      style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        gap: 10,
-                                      }}
-                                    >
-                                      <span style={{ color: UI.text }}>
-                                        {idx === 0 ? "Start" : `L${idx}`} :{" "}
-                                        <b>{t.label}</b>
-                                      </span>
-                                      <span
-                                        style={{
-                                          fontWeight: 950,
-                                          color: "#1D4ED8",
-                                        }}
-                                      >
-                                        {v
-                                          ? `Δ ${formatSignedNumber(
-                                              safeNum(v.diff)
-                                            )} (${formatRate(safeNum(v.rate))})`
-                                          : ""}
-                                      </span>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* controls */}
-                          <div
-                            style={{
-                              display: "flex",
-                              gap: 8,
-                              flexWrap: "wrap",
-                              alignItems: "center",
-                            }}
-                          >
-                            <Button
-                              tone={showAllChildren ? "ghost" : "solid"}
-                              onClick={() => setShowAllChildren(false)}
-                            >
-                              TOP 8
-                            </Button>
-                            <Button
-                              tone={showAllChildren ? "solid" : "ghost"}
-                              onClick={() => setShowAllChildren(true)}
-                            >
-                              전체
-                            </Button>
-
-                            <input
-                              value={childFilter}
-                              onChange={(e) => setChildFilter(e.target.value)}
-                              placeholder="항목 검색"
-                              style={{
-                                flex: 1,
-                                minWidth: 200,
-                                padding: "9px 10px",
-                                borderRadius: UI.radius,
-                                border: UI.border,
-                                outline: "none",
-                                fontWeight: 700,
-                                fontSize: 12,
-                                background: "#fff",
-                              }}
-                            />
-
-                            <select
-                              value={sortMode}
-                              onChange={(e) => setSortMode(e.target.value)}
-                              style={{
-                                padding: "9px 10px",
-                                borderRadius: UI.radius,
-                                border: UI.border,
-                                fontWeight: 900,
-                                fontSize: 12,
-                                background: "#fff",
-                                color: UI.text,
-                              }}
-                            >
-                              <option value="absdiff">증감액</option>
-                              <option value="impact">Impact</option>
-                              <option value="rate">증감률</option>
-                            </select>
-                          </div>
-
-                          {/* Drill list */}
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 8,
-                            }}
-                          >
-                            {currentDrillList.map((x) => {
-                              const nextParts = [
-                                ...(currentDrill?.parts || []),
-                                x.name,
-                              ];
-                              const hasNext = getHasNext(nextParts);
-
-                              const impact = safeNum(x.impact);
-                              const signTone =
-                                toneForValue(x.diff) === "pos"
-                                  ? "red"
-                                  : toneForValue(x.diff) === "neg"
-                                  ? "green"
-                                  : "neutral";
-                              const impactTone =
-                                Math.abs(impact) >= 50
-                                  ? impact >= 0
-                                    ? "red"
-                                    : "green"
-                                  : Math.abs(impact) >= 20
-                                  ? "blue"
-                                  : "neutral";
-
-                              return (
-                                <div
-                                  key={joinPath(nextParts)}
-                                  onClick={() => {
-                                    if (!hasNext) return;
-                                    setAutoTrace(null);
-                                    setDrillStack([
-                                      ...drillStack,
-                                      {
-                                        key: joinPath(nextParts),
-                                        label: x.name,
-                                        parts: nextParts,
-                                      },
-                                    ]);
-                                    setShowAllChildren(false);
-                                    setChildFilter("");
-                                    setSortMode("absdiff");
-                                  }}
-                                  style={{
-                                    padding: 12,
-                                    borderRadius: UI.radius,
-                                    border: UI.border,
-                                    background: "#fff",
-                                    cursor: hasNext ? "pointer" : "default",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "flex",
-                                      justifyContent: "space-between",
-                                      alignItems: "baseline",
-                                      gap: 10,
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        gap: 8,
-                                        alignItems: "baseline",
-                                        minWidth: 0,
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          fontSize: 12,
-                                          fontWeight: 950,
-                                          color: UI.text,
-                                          whiteSpace: "nowrap",
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                        }}
-                                      >
-                                        {x.name}
-                                      </div>
-                                      {hasNext ? (
-                                        <Chip tone="dark">drill</Chip>
-                                      ) : (
-                                        <Chip tone="neutral">leaf</Chip>
-                                      )}
-                                    </div>
-
-                                    <div
-                                      style={{
-                                        display: "flex",
-                                        gap: 8,
-                                        alignItems: "center",
-                                        flexWrap: "wrap",
-                                        justifyContent: "flex-end",
-                                      }}
-                                    >
-                                      <Chip
-                                        tone={impactTone}
-                                        title="Parent 변화(증감액) 중 이 항목 비중"
-                                      >
-                                        Impact {formatRate(impact)}
-                                      </Chip>
-                                      <Chip tone={signTone}>
-                                        Δ {formatSignedNumber(safeNum(x.diff))}{" "}
-                                        ({formatRate(safeNum(x.rate))})
-                                      </Chip>
-                                    </div>
-                                  </div>
-
-                                  <div style={{ marginTop: 8 }}>
-                                    <Bar
-                                      value={safeNum(x.diff)}
-                                      maxAbs={drillMaxAbs}
-                                      height={10}
-                                    />
-                                  </div>
-
-                                  <div
-                                    style={{
-                                      marginTop: 8,
-                                      display: "grid",
-                                      gridTemplateColumns: "1fr 1fr 1fr",
-                                      gap: 8,
-                                      fontSize: 11,
-                                      color: UI.subText,
-                                    }}
-                                  >
-                                    <div
-                                      style={{
-                                        border: UI.border,
-                                        borderRadius: UI.radiusSm,
-                                        padding: "8px 10px",
-                                        background: UI.bgSoft,
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          fontWeight: 900,
-                                          color: UI.text,
-                                        }}
-                                      >
-                                        전월
-                                      </div>
-                                      <div style={{ marginTop: 4 }}>
-                                        {formatNumber(safeNum(x.prev))}
-                                      </div>
-                                    </div>
-                                    <div
-                                      style={{
-                                        border: UI.border,
-                                        borderRadius: UI.radiusSm,
-                                        padding: "8px 10px",
-                                        background: UI.bgSoft,
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          fontWeight: 900,
-                                          color: UI.text,
-                                        }}
-                                      >
-                                        당월
-                                      </div>
-                                      <div style={{ marginTop: 4 }}>
-                                        {formatNumber(safeNum(x.cur))}
-                                      </div>
-                                    </div>
-                                    <div
-                                      style={{
-                                        border: UI.border,
-                                        borderRadius: UI.radiusSm,
-                                        padding: "8px 10px",
-                                        background: UI.bgSoft,
-                                      }}
-                                    >
-                                      <div
-                                        style={{
-                                          fontWeight: 900,
-                                          color: UI.text,
-                                        }}
-                                      >
-                                        해석
-                                      </div>
-                                      <div
-                                        style={{
-                                          marginTop: 4,
-                                          fontWeight: 900,
-                                          color: UI.text,
-                                        }}
-                                      >
-                                        {safeNum(x.diff) >= 0
-                                          ? `Rate ${formatRate(
-                                              safeNum(x.rate)
-                                            )} ↑ / Impact ${formatRate(impact)}`
-                                          : `Rate ${formatRate(
-                                              safeNum(x.rate)
-                                            )} ↓ / Impact ${formatRate(
-                                              impact
-                                            )}`}
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-
-                          {missingChildren.length > 0 && (
-                            <div
-                              style={{
-                                padding: 12,
-                                borderRadius: UI.radius,
-                                border: "1px solid #FDE68A",
-                                background: "#FFFBEB",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontWeight: 950,
-                                  color: "#92400E",
-                                  marginBottom: 8,
-                                }}
-                              >
-                                누락 가능(마감/매핑/데이터 미반영 의심)
-                              </div>
-                              <div
-                                style={{
-                                  display: "flex",
-                                  flexWrap: "wrap",
-                                  gap: 8,
-                                }}
-                              >
-                                {missingChildren.slice(0, 20).map((n) => (
-                                  <Chip key={n} tone="amber">
-                                    {n}
-                                  </Chip>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </Card>
+                    <div>항목</div>
+                    <div style={{ textAlign: "right" }}>증감률</div>
+                    <div style={{ textAlign: "right" }}>Impact</div>
+                    <div style={{ textAlign: "right" }}>증감(Δ)</div>
+                    <div style={{ textAlign: "right" }}>전월</div>
+                    <div style={{ textAlign: "right" }}>당월</div>
                   </div>
+
+                  {currentDrillList.map((x) => {
+                    const nextParts = [...(currentDrill?.parts || []), x.name];
+                    const hasNext = getHasNext(nextParts);
+                    const diff = safeNum(x.diff);
+
+                    return (
+                      <div
+                        key={joinPath(nextParts)}
+                        onClick={() => {
+                          if (!hasNext) return;
+                          setDrillStack([
+                            ...drillStack,
+                            {
+                              key: joinPath(nextParts),
+                              label: x.name,
+                              parts: nextParts,
+                            },
+                          ]);
+                          setChildFilter("");
+                          setSortMode("absdiff");
+                        }}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            "1.2fr 0.7fr 0.7fr 0.9fr 0.7fr 0.6fr",
+                          padding: "12px 12px",
+                          borderTop: `1px solid ${UI.line}`,
+                          background: hasNext ? "#fff" : "rgba(15,23,42,0.01)",
+                          cursor: hasNext ? "pointer" : "default",
+                          alignItems: "center",
+                        }}
+                      >
+                        {/* 항목 + 바 */}
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              alignItems: "center",
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 900,
+                                color: UI.text,
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                              }}
+                              title={x.name}
+                            >
+                              {x.name}
+                            </div>
+                            {hasNext && (
+                              <Pill tone="gray" style={{ fontSize: 10 }}>
+                                Drill
+                              </Pill>
+                            )}
+                          </div>
+
+                          <div style={{ marginTop: 8 }}>
+                            <BarMeter value={diff} maxAbs={drillMaxAbs || 1} />
+                          </div>
+                        </div>
+
+                        {/* 증감률 */}
+                        <div style={{ textAlign: "right" }}>
+                          {(() => {
+                            const rr = safeNum(x.rate);
+                            const cc = pickColor(signTone(rr));
+                            return (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  padding: "6px 10px",
+                                  borderRadius: UI.radius,
+                                  border: `1px solid ${cc.bd}`,
+                                  background: cc.bg,
+                                  color: cc.fg,
+                                  fontSize: 13,
+                                  fontWeight: 900,
+                                  ...UI.mono,
+                                }}
+                                title="증감률(%)"
+                              >
+                                {formatRate(rr)}
+                              </span>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Impact (파랑/회색만) */}
+                        <div style={{ textAlign: "right" }}>
+                          {(() => {
+                            const ii = safeNum(x.impact);
+                            const tone = impactTone(ii, parentSummary?.diff);
+                            const cc =
+                              tone === "blue" ? pickBlue() : pickGray();
+                            const parentZero =
+                              Math.abs(safeNum(parentSummary?.diff)) < 1e-9;
+
+                            return (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  padding: "6px 10px",
+                                  borderRadius: UI.radius,
+                                  border: `1px solid ${cc.bd}`,
+                                  background: cc.bg,
+                                  color: cc.fg,
+                                  fontSize: 13,
+                                  fontWeight: 900,
+                                  ...UI.mono,
+                                }}
+                                title={
+                                  parentZero
+                                    ? "Parent Δ=0 → Impact 의미 없음"
+                                    : "Parent Δ 대비 비중"
+                                }
+                              >
+                                {parentZero ? "—" : formatRate(ii)}
+                              </span>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Δ */}
+                        <div
+                          style={{
+                            textAlign: "right",
+                            fontSize: 12,
+                            fontWeight: 900,
+                            color: UI.text,
+                            ...UI.mono,
+                          }}
+                        >
+                          {formatSignedNumber(diff)}
+                        </div>
+
+                        {/* 전월 */}
+                        <div
+                          style={{
+                            textAlign: "right",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: UI.sub,
+                            ...UI.mono,
+                          }}
+                        >
+                          {formatNumber(safeNum(x.prev))}
+                        </div>
+
+                        {/* 당월 */}
+                        <div
+                          style={{
+                            textAlign: "right",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            color: UI.sub,
+                            ...UI.mono,
+                          }}
+                        >
+                          {formatNumber(safeNum(x.cur))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* RIGHT */}
-                <div
-                  style={{ display: "flex", flexDirection: "column", gap: 12 }}
-                >
-                  <div style={{ height: 1 }} />
-                  <Top10Card
-                    title="전체 증감 비율 Top 10 (세부항목)"
-                    items={top10ByRate}
-                  />
-                </div>
-              </div>
-            </>
-          )}
+                {missingChildren.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      borderRadius: UI.radiusLg,
+                      border: "1px solid rgba(245,158,11,0.26)",
+                      background: UI.amberBg,
+                      padding: 14,
+                      fontSize: 12,
+                      fontWeight: 900,
+                      color: "#92400E",
+                    }}
+                  >
+                    누락 가능: {missingChildren.join(", ")}
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
         </>
       )}
     </div>
