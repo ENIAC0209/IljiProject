@@ -77,7 +77,7 @@ import pymysql
 from werkzeug.security import check_password_hash, generate_password_hash
 
 app = Flask(__name__, static_folder="static", static_url_path="")
-CORS(app)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 CACHE_DIR = BASE_DIR / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -1987,21 +1987,42 @@ def test_db_connection():
         except Exception:
             pass
 
+# =====================================================
+# React SPA 정적 파일 서빙 (Render/Local 공통)
+# =====================================================
 from flask import send_from_directory
 
-@app.route("/")
+@app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
-def serve_react(path="index.html"):
-    if path.startswith("api"):
+def serve_react(path=""):
+    # API 요청은 Flask API가 처리
+    if path == "api" or path.startswith("api/"):
         return "Not Found", 404
 
-    file_path = os.path.join(app.static_folder, path)
-    if path != "" and os.path.exists(file_path):
-        return send_from_directory(app.static_folder, path)
 
-    return send_from_directory(app.static_folder, "index.html")
+    static_dir = app.static_folder
+    file_path = os.path.join(static_dir, path)
+
+    # 실제 정적 파일(js, css, image 등)이 있으면 그대로 반환
+    if path != "" and os.path.exists(file_path):
+        return send_from_directory(static_dir, path)
+
+    # 나머지 모든 경로는 React index.html
+    return send_from_directory(static_dir, "index.html")
 
 if __name__ == "__main__":
     print("[INFO] Flask 서버 시작")
-    test_db_connection()
-    app.run(host="0.0.0.0", port=5000, debug=True)
+
+    # Render는 PORT 환경변수 필수
+    port = int(os.environ.get("PORT", 5000))
+
+    # DB 모드일 때만 테스트
+    if USE_DB_AUTH:
+        test_db_connection()
+
+    # debug=False (gunicorn/Render 충돌 방지)
+    app.run(
+        host="0.0.0.0",
+        port=port,
+        debug=False
+    )

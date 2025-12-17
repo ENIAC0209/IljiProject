@@ -42,7 +42,7 @@ import SidebarPanel from "./components/sidebar/SidebarPanel";
 import { getIconStyle, chipBase } from "./components/sidebar/sidebarStyles";
 
 // ===== Flask API 베이스 =====
-const API_BASE = "http://localhost:5000";
+const API_BASE = "";
 
 // 숫자 포맷 helper
 const formatNumber = (v) =>
@@ -53,22 +53,23 @@ function App() {
   // ✅ 로그인 상태 (기존 유지)
   // ==============================
   const [isLoggedIn, setIsLoggedIn] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return sessionStorage.getItem("ilji_logged_in") === "1";
-    } catch {
-      return false;
-    }
-  });
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem("ilji_logged_in") === "1";
+  } catch {
+    return false;
+  }
+});
 
-  useEffect(() => {
-    try {
-      if (isLoggedIn) sessionStorage.setItem("ilji_logged_in", "1");
-      else sessionStorage.removeItem("ilji_logged_in");
-    } catch (err) {
-      console.warn("sessionStorage sync error:", err);
-    }
-  }, [isLoggedIn]);
+useEffect(() => {
+  try {
+    if (isLoggedIn) localStorage.setItem("ilji_logged_in", "1");
+    else localStorage.removeItem("ilji_logged_in");
+  } catch (err) {
+    console.warn("localStorage sync error:", err);
+  }
+}, [isLoggedIn]);
+
 
   // (LoginPage가 theme props를 기대할 가능성 대비)
   const [theme, setTheme] = useState("light");
@@ -1603,8 +1604,9 @@ function App() {
           데이터를 불러오는 중 오류가 발생했습니다.
         </div>
         <div style={{ fontSize: 13, color: "#6b7280" }}>
-          백엔드 서버({API_BASE})가 실행 중인지 확인해주세요.
+        서버와의 통신 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.
         </div>
+
 
         <button
           type="button"

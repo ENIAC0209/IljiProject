@@ -68,7 +68,8 @@ function LoginPage({ onLoginSuccess }) {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/api/login", {
+      // ✅ 수정: localhost 고정 제거 → Flask가 React도 서빙하므로 상대경로 사용
+      const res = await fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -124,7 +125,8 @@ function LoginPage({ onLoginSuccess }) {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/api/signup", {
+      // ✅ 수정: localhost 고정 제거 → 상대경로 사용
+      const res = await fetch("/api/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -175,7 +177,8 @@ function LoginPage({ onLoginSuccess }) {
     }
 
     try {
-      const res = await fetch("http://localhost:5000/api/reset-password", {
+      // ✅ 수정: localhost 고정 제거 → 상대경로 사용
+      const res = await fetch("/api/reset-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
