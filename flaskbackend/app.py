@@ -71,10 +71,15 @@ from models.closing_forecast_model import (
 )
 
 # =========================
-# ✅ DB / Auth
+# ✅ DB / Auth (DB 모드일 때만 import)
 # =========================
-import pymysql
+try:
+    import pymysql
+except Exception:
+    pymysql = None
+
 from werkzeug.security import check_password_hash, generate_password_hash
+
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -99,6 +104,8 @@ def get_cache_path(name: str) -> str:
 
 
 def get_connection():
+    if pymysql is None:
+        raise RuntimeError("pymysql is not installed. Set USE_DB_AUTH=False or add pymysql to requirements.txt.")
     return pymysql.connect(
         host="192.168.2.186",
         user="shee",
